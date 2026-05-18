@@ -115,17 +115,16 @@ Address       Size      Contents                 Lifetime
                (16 sec   (temporary staging area)  before copying to 0x7C00
                 max)                                — dead after boot
 
-0x0000:0x8000  4096 B   HEAP (managed by MM.SYS)  Dynamic allocation region
-               (4 KB)    MCB-style block headers,   Initialized as single free
-                          first-fit allocation,      block by mm_init; available
-                          INT 0x82 API               via INT 0x82 MEM_ALLOC/FREE
-
-0x0000:0x9000  26624 B  TPA (Transient Prog Area)  User programs loaded here
-               (26 KB)   Programs loaded by shell   via `run` command. ORG 0x9000.
+0x0000:0x8000  30720 B  TPA (Transient Prog Area)  User programs loaded here
+               (30 KB)   Programs loaded by shell   via `run` command. ORG 0x8000.
                           `run` command, validated    Discarded on return.
                           (MNEX magic, attributes)
 
-0x0000:0xF800           (End of TPA/heap)          0xF7FF is last usable byte
+0x0000:0xF800           (End of TPA)               0xF7FF is last usable byte
+
+0xFFFF:0x0010  65264 B  HEAP (HMA, managed by      Dynamic allocation region.
+               (~64 KB)  MM.SYS via INT 0x82)       MCB-style block headers,
+                          Requires A20 enabled.      first-fit, ES:BX access.
 
 0x0000:0x9FC00           EBDA / BIOS reserved      Platform-dependent
 ...

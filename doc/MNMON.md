@@ -40,7 +40,7 @@ commands for OS-specific data structures.
 | Architectural purity | Bloats shell | Clean separation |
 | Loader validation | N/A | Proves interactive programs work |
 
-Loaded into the TPA at 0x9000, running in flat segment 0 with full access
+Loaded into the TPA at 0x8000, running in flat segment 0 with full access
 to the entire 64 KB address space.
 
 ---
@@ -186,12 +186,12 @@ mnos:\>
 ```
 ┌─────────────────────────────┐ 0xF7FF (TPA end)
 │                             │
-├─────────────────────────────┤ 0x9800
+├─────────────────────────────┤ 0x8A00
 │  dir buffer (512 bytes)     │        ← temporary, beyond loaded sectors
-├─────────────────────────────┤ 0x9000
-│  MNMON.MNX (4 sectors)      │        ← code + data + BSS
 ├─────────────────────────────┤ 0x8000
-│  Heap (4 KB)                │
+│  MNMON.MNX (5 sectors)      │        ← code + data + BSS
+├─────────────────────────────┤ 0x7F00
+│  ARGV table                 │
 ├─────────────────────────────┤ 0x7000
 │  Stack (grows ↓ from 0x7C00)│
 ├─────────────────────────────┤ 0x5000
@@ -226,7 +226,7 @@ src/programs/mnmon.asm          — Single self-contained source file
 
 ```nasm
 [BITS 16]
-[ORG 0x9000]
+[ORG USER_PROG_BASE]
 db 'MNEX'                       ; Magic — user-mode executable
 dw 4                            ; Size in sectors (2048 bytes)
 entry:                          ; Code begins at offset 6
@@ -348,7 +348,7 @@ call [.go_addr]     ; Near call — ret returns to monitor
 
 | Limitation | Reason |
 |------------|--------|
-| Cannot load programs from within mnmon | Both would occupy same TPA (0x9000) |
+| Cannot load programs from within mnmon | Both would occupy same TPA (0x8000) |
 | No breakpoints | Would require INT 3 hook + handler infrastructure |
 | No register display | Registers are transient; no saved context to show |
 | No disassembly | x86-16 decoder would be 1+ KB alone |

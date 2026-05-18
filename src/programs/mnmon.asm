@@ -31,7 +31,7 @@
 ; MNEX HEADER (6 bytes)
 ; =============================================================================
             db 'MNEX'               ; Magic — user-mode executable
-            dw 4                    ; Size in sectors (2048 bytes)
+            dw 5                    ; Size in sectors (2560 bytes)
 
 ; =============================================================================
 ; ENTRY POINT (offset 6)
@@ -761,17 +761,45 @@ cmd_ivt:
 ; MCB — Walk heap MCB chain from HEAP_START
 ; =============================================================================
 cmd_mcb:
+    ; MEM_QUERY: AX=segment, BX=start, CX=size
+    mov ah, MEM_QUERY
+    int 0x82
+    push cx                         ; Save size
+    push bx                         ; Save start
+    push ax                         ; Save segment
+
+    ; Show heap segment BEFORE changing ES
+    mov si, str_mcb_seg
+    mov ah, SYS_PRINT_STRING
+    int 0x80
+    pop ax                          ; Segment
+    push ax                         ; Re-save
+    mov dx, ax
+    mov ah, SYS_PRINT_HEX16
+    int 0x80
+    mov si, str_crlf
+    mov ah, SYS_PRINT_STRING
+    int 0x80
+
+    ; Print column header
     mov si, str_mcb_hdr
     mov ah, SYS_PRINT_STRING
     int 0x80
 
-    mov di, HEAP_START              ; DI = current MCB address
+    ; Now set up ES:DI for walk
+    pop ax                          ; Segment
+    pop di                          ; Start offset
+    pop cx                          ; Size
+    add cx, di                      ; CX = heap end offset
+    mov [.mcb_end], cx
+    mov es, ax                      ; ES = heap segment
+
 .mcb_loop:
-    cmp di, HEAP_END
+    cmp di, [.mcb_end]
     jae .mcb_done
 
-    ; Validate magic byte
-    cmp byte [di + MCB_MAGIC_OFF], MCB_MAGIC
+    ; Validate magic byte (via ES:)
+    cmp byte [es:di + MCB_MAGIC_OFF], MCB_MAGIC
     jne .mcb_corrupt
 
     ; Print address
@@ -783,7 +811,7 @@ cmd_mcb:
     int 0x80
 
     ; Print size
-    mov dx, [di + MCB_SIZE_OFF]
+    mov dx, [es:di + MCB_SIZE_OFF]
     mov ah, SYS_PRINT_HEX16
     int 0x80
     mov al, ' '
@@ -791,7 +819,7 @@ cmd_mcb:
     int 0x80
 
     ; Print status (Used/Free)
-    test byte [di + MCB_FLAGS_OFF], MCB_FLAG_USED
+    test byte [es:di + MCB_FLAGS_OFF], MCB_FLAG_USED
     jz .mcb_free
     mov si, str_mcb_used
     jmp .mcb_stat
@@ -802,7 +830,7 @@ cmd_mcb:
     int 0x80
 
     ; Print owner ID
-    mov al, [di + MCB_FLAGS_OFF]
+    mov al, [es:di + MCB_FLAGS_OFF]
     and al, MCB_OWNER_MASK
     shr al, MCB_OWNER_SHIFT
     mov ah, SYS_PRINT_HEX8
@@ -812,7 +840,7 @@ cmd_mcb:
     int 0x80
 
     ; Advance to next MCB
-    add di, [di + MCB_SIZE_OFF]
+    add di, [es:di + MCB_SIZE_OFF]
     jmp .mcb_loop
 
 .mcb_corrupt:
@@ -820,7 +848,13 @@ cmd_mcb:
     mov ah, SYS_PRINT_STRING
     int 0x80
 .mcb_done:
+    ; Restore ES to 0
+    xor ax, ax
+    mov es, ax
     jmp mon_loop
+
+; Local variable for heap end offset
+.mcb_end: dw 0
 
 ; =============================================================================
 ; DIR — Display MNFS directory (via INT 0x81 FS_LIST_FILES)
@@ -963,6 +997,7 @@ str_ivt_sep:  db ': ', 0
 
 ; --- MCB command strings ---
 str_mcb_hdr:    db 'Addr Size Stat Own', 13, 10, 0
+str_mcb_seg:    db 'Seg: ', 0
 str_mcb_used:   db 'USED ', 0
 str_mcb_free_s: db 'FREE ', 0
 str_mcb_bad:    db '^ Corrupt MCB (bad magic)', 13, 10, 0
@@ -982,6 +1017,6 @@ mon_buf:        times 40 db 0       ; Input line buffer
 mon_dir_buf     equ (USER_PROG_BASE + 4 * 512)  ; 0x9800
 
 ; =============================================================================
-; PADDING — fill to 4 sectors (2048 bytes)
+; PADDING — fill to 5 sectors (2560 bytes)
 ; =============================================================================
-times (4 * 512) - ($ - $$) db 0
+times (5 * 512) - ($ - $$) db 0

@@ -14,7 +14,7 @@ loads FS.SYS (filesystem module with INT 0x81 API), loads MM.SYS (heap
 allocator with INT 0x82 API), and finally loads the interactive shell
 (SHELL.SYS) — all file locations discovered via directory lookup, no hardcoded
 disk offsets.  The shell can load and execute user programs (`.MNX` files) from
-disk into a 26 KB Transient Program Area, with structured argc/argv parsing
+disk into a 30 KB Transient Program Area, with structured argc/argv parsing
 for command-line arguments.  A Python + Unicorn Engine test framework provides
 37 unit tests with coverage reporting.  Debug builds add serial logging,
 syscall tracing, user-mode debug syscalls, assertion macros, INT depth tracking,
@@ -157,8 +157,8 @@ release and debug builds (PIC remapped to avoid IRQ/exception vector conflicts).
 | `0x0000:0x7BFE` ↓ | Stack (grows downward from 0x7C00) |
 | `0x0000:0x7F00` – `0x0000:0x7FFB` | **ARGV table** — argc (1 byte) + 16 word pointers + NUL-separated arg strings |
 | `0x0000:0x7E00` – `0x0000:0x9DFF` | VBR load buffer (MBR uses this temporarily) |
-| `0x0000:0x8000` – `0x0000:0xF7FF` | **HEAP** (30 KB, managed by MM.SYS via INT 0x82) |
-| `0x0000:0x9000` – `0x0000:0xFFFF` | **TPA** (Transient Program Area, 26 KB — user `.MNX` programs loaded here) |
+| `0x0000:0x8000` – `0x0000:0xF7FF` | **TPA** (Transient Program Area, 30 KB — user `.MNX` programs loaded here) |
+| `0xFFFF:0x0010` – `0xFFFF:0xFF00` | **HMA HEAP** (~64 KB, managed by MM.SYS via INT 0x82) |
 
 #### Boot Info Block (BIB) — 0x0600
 
@@ -307,7 +307,7 @@ SHELL Header:
 > extension because it is part of the system boot chain — the kernel loads it
 > directly into system memory at a fixed address (0x3000), it never returns
 > control to the kernel, and it has unrestricted access to all INT vectors.
-> User-mode programs loaded on demand into the TPA (0x9000+) use the `.MNX`
+> User-mode programs loaded on demand into the TPA (0x8000+) use the `.MNX`
 > extension instead.
 
 ### 2.10 File Extension Conventions
@@ -315,7 +315,7 @@ SHELL Header:
 | Extension | Meaning | Loaded by | Memory region |
 |-----------|---------|-----------|---------------|
 | `.SYS`    | System binary — part of the trusted boot chain | Kernel (at boot) | Fixed system addresses (0x0800–0x4FFF) |
-| `.MNX`    | User-mode executable (MNEX format) | Shell (implicit execution) | TPA at 0x9000+ |
+| `.MNX`    | User-mode executable (MNEX format) | Shell (implicit execution) | TPA at 0x8000+ |
 | (none)    | Raw boot sectors (MBR, VBR) | BIOS / MBR | 0x7C00 |
 
 System binaries (`.SYS`) are loaded at boot time to fixed memory addresses and
@@ -324,7 +324,7 @@ remain resident for the lifetime of the OS.  They are marked with
 programs.
 
 User executables (`.MNX`) are loaded on demand into the Transient Program Area
-(TPA) at 0x9000 and must contain an MNEX header with the `'MNEX'` magic.  They
+(TPA) at 0x8000 and must contain an MNEX header with the `'MNEX'` magic.  They
 are marked with `ATTR_EXEC` (bit 1) in the MNFS directory.
 
 ### 2.11 Disk Layout
@@ -540,7 +540,7 @@ for backward compatibility.
 ### 3.10 User Programs
 
 User programs are `.MNX` executables loaded into the Transient Program Area
-(TPA) at 0x9000 by the shell.  They use the MNEX binary format with an `'MNEX'`
+(TPA) at 0x8000 by the shell.  They use the MNEX binary format with an `'MNEX'`
 header.  Two example programs ship with mini-os:
 
 | Program | Description |

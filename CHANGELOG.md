@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.9.10] - 2026-05-18
+
+### Added
+- **HMA (High Memory Area) heap** — dynamic memory allocation moved from 4 KB
+  conventional heap to ~64 KB in HMA (segment FFFF:0010–FF00):
+  - A20 alias detection at MM init (no fallback — heap disabled if A20 fails)
+  - ES-based heap access (DS remains 0 for interrupt safety)
+  - MEM_ALLOC now returns AX=segment + BX=offset (callers use ES:BX)
+  - New `MEM_QUERY` syscall (AH=0x05): returns heap segment/start/size
+  - CLI guards around ES manipulation for interrupt safety
+  - 256-byte guard zone at top of HMA to prevent 16-bit wrap bugs
+- **TPA expanded** — 26 KB → 30 KB (0x8000–0xF7FF) by reclaiming old heap space
+- **Shell `mem` command** — shows heap type ("HMA ~64 KB" or "Conventional 4 KB"),
+  pauses before heap section, uses MEM_QUERY + ES: for block walk
+- **MNMON `mcb` command** — uses MEM_QUERY + ES: for HMA-aware MCB walk,
+  displays heap segment
+- **Auto-generated `constants.py`** — `tests/gen_constants.py` extracts NASM
+  `equ` definitions from `.inc` files; eliminates manual sync
+- **doc/MEMORY-MANAGER.md** updated to v3.0 with HMA architecture
+
+### Changed
+- `MM.SYS` binary size: release 1→2 sectors, debug 2→3 sectors
+- `MNMON.MNX` binary size: 4→5 sectors (HMA-aware mcb command)
+- `USER_PROG_BASE` moved from 0x9000 to 0x8000 (TPA starts earlier)
+- `USER_PROG_MAX` increased from 0x6800 (26 KB) to 0x7800 (30 KB)
+- `MEM_SYSCALL_MAX` bumped from 0x04 to 0x05
+- All MM handlers now use ES: segment override for heap access
+- Conventional heap fallback removed (A20 failure = no heap, not 4 KB fallback)
+
+---
+
 ## [0.9.9] - 2026-05-15
 
 ### Added

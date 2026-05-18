@@ -1,33 +1,101 @@
-"""Memory constants mirroring src/include/memory.inc and syscalls.inc.
+"""Auto-generated from src/include/*.inc — DO NOT EDIT MANUALLY.
 
-Keep these in sync with the assembly definitions.  If a constant changes in
-the .inc file, update it here too.
+Regenerate with:  python tests/gen_constants.py
 """
 
-# --- Shell ABI region (0x7F00–0x7FFF) ----------------------------------------
-SHELL_SAVED_SP   = 0x7FFE
-SHELL_ARGS_PTR   = 0x7FFC
 
-# --- Parsed argument table (Layer 2) -----------------------------------------
-ARGV_TABLE       = 0x7F00
-ARGV_ARGC        = 0x7F00  # 1 byte: argument count
-ARGV_PTRS        = 0x7F02  # 16 word pointers (32 bytes)
-ARGV_STORAGE     = 0x7F22  # NUL-separated arg strings
-ARGV_STORAGE_END = 0x7FFB
-ARGV_MAX_ARGS    = 15
+# --- From memory.inc --------------------------------------------------
+LOADER_SEG           = 0x00
+LOADER_OFF           = 0x0800
+KERNEL_SEG           = 0x00
+KERNEL_OFF           = 0x5000
+SHELL_SEG            = 0x00
+SHELL_OFF            = 0x3000
+STACK_CANARY_ADDR    = 0x7000
+STACK_CANARY_VALUE   = 0xDEAD
+STACK_CANARY_SIZE    = 4
+HMA_SEG              = 0xFFFF
+HMA_HEAP_START       = 0x10
+HMA_HEAP_END         = 0xFF00
+HMA_HEAP_SIZE        = HMA_HEAP_END - HMA_HEAP_START
+MM_SEG               = 0x00
+MM_OFF               = 0x2800
+MM_MAX_SECTORS       = 4
+HEAP_START           = 0x8000
+HEAP_END             = 0x9000
+HEAP_SIZE            = HEAP_END - HEAP_START
+USER_PROG_BASE       = 0x8000
+USER_PROG_END        = 0xF7FF
+USER_PROG_MAX        = 0x7800
+USER_PROG_MAX_SEC    = 60
+SHELL_SAVED_SP       = 0x7FFE
+SHELL_ARGS_PTR       = 0x7FFC
+ARGV_TABLE           = 0x7F00
+ARGV_ARGC            = 0x7F00
+ARGV_PTRS            = 0x7F02
+ARGV_STORAGE         = 0x7F22
+ARGV_STORAGE_END     = 0x7FFB
+ARGV_MAX_ARGS        = 15
+MCB_SIZE_OFF         = 0
+MCB_FLAGS_OFF        = 2
+MCB_MAGIC_OFF        = 3
+MCB_HDR_SIZE         = 4
+MCB_MAGIC            = 0x4D
+MCB_FLAG_USED        = 0x01
+MCB_OWNER_MASK       = 0x0E
+MCB_OWNER_SHIFT      = 1
+MCB_MIN_BLOCK        = 8
+MCB_OWNER_NONE       = 0
+MCB_OWNER_KERN       = 1
+MCB_OWNER_FS         = 2
+MCB_OWNER_MM         = 3
+MCB_OWNER_SHELL      = 4
+MCB_OWNER_USR1       = 5
+MCB_OWNER_USR2       = 6
+MCB_OWNER_USR3       = 7
+MEM_ALLOC            = 0x01
+MEM_FREE             = 0x02
+MEM_AVAIL            = 0x03
+MEM_INFO             = 0x04
+MEM_QUERY            = 0x05
+MEM_SYSCALL_MAX      = 0x05
 
-# --- Heap / Memory Manager constants -----------------------------------------
-HEAP_START       = 0x8000
-HEAP_END         = 0x9000
-HEAP_SIZE        = HEAP_END - HEAP_START  # 4096 bytes
-MCB_SIZE_OFF     = 0
-MCB_FLAGS_OFF    = 2
-MCB_MAGIC_OFF    = 3
-MCB_HDR_SIZE     = 4
-MCB_MAGIC        = 0x4D    # 'M'
-MCB_FLAG_USED    = 0x01
-MCB_OWNER_SHIFT  = 1
-MCB_MIN_BLOCK    = 8       # 4 header + 4 payload minimum
+# --- From syscalls.inc ------------------------------------------------
+SYS_PRINT_STRING     = 0x01
+SYS_PRINT_CHAR       = 0x02
+SYS_READ_KEY         = 0x03
+SYS_READ_SECTOR      = 0x04
+SYS_GET_VERSION      = 0x05
+SYS_CLEAR_SCREEN     = 0x06
+SYS_SET_CURSOR       = 0x07
+SYS_GET_CURSOR       = 0x08
+SYS_CHECK_A20        = 0x09
+SYS_GET_CONV_MEM     = 0x0A
+SYS_GET_EXT_MEM      = 0x0B
+SYS_GET_E820         = 0x0C
+SYS_REBOOT           = 0x0D
+SYS_GET_DRIVE_INFO   = 0x0E
+SYS_GET_BIB          = 0x0F
+SYS_PRINT_HEX8       = 0x10
+SYS_PRINT_HEX16      = 0x11
+SYS_PRINT_DEC16      = 0x12
+SYS_WAIT_KEY         = 0x13
+SYS_GET_EQUIP        = 0x14
+SYS_GET_VIDEO        = 0x15
+SYS_GET_BDA_BYTE     = 0x16
+SYS_GET_BDA_WORD     = 0x17
+SYS_CPUID            = 0x18
+SYS_CHECK_CPUID      = 0x19
+SYS_GET_EDD          = 0x1A
+SYS_GET_IVT          = 0x1B
+SYS_DBG_PRINT        = 0x20
+SYS_DBG_HEX16        = 0x21
+SYS_DBG_REGS         = 0x22
+SYS_EXIT             = 0x23
+SYS_GET_ARGS         = 0x24
+SYS_GET_ARGC         = 0x25
+SYS_GET_ARGV         = 0x26
+SYSCALL_MAX          = 0x26
 
 # --- MM stub entry points (offsets from CODE_BASE) ----------------------------
 MM_ALLOC_ENTRY   = 0x00
@@ -36,11 +104,8 @@ MM_AVAIL_ENTRY   = 0x20
 MM_INFO_ENTRY    = 0x30
 MM_INIT_ENTRY    = 0x40
 
-# --- Run command data (relative to data segment in stub) ----------------------
-# These are offsets within the stub binary's data area, set by the stub itself.
-# The stub defines labels for run_fname_buf, run_ext_provided, etc.
-
 # --- Test harness defaults ----------------------------------------------------
 CODE_BASE        = 0x1000   # Where stub binaries are loaded
 STACK_TOP        = 0xFFF0   # Initial SP
 STRING_AREA      = 0x5000   # Where test input strings are placed
+

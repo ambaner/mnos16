@@ -236,6 +236,15 @@ if (-not $NoTest) {
             & $Python.Source -m pip install -q -r $ReqFile 2>&1 | Out-Null
         }
 
+        # Generate constants.py from .inc files
+        $GenScript = Join-Path $Root 'tests' 'gen_constants.py'
+        Write-Step 'Generating test constants from .inc files...'
+        & $Python.Source $GenScript
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error 'Failed to generate test constants.'
+            exit 1
+        }
+
         $TestDir = Join-Path $Root 'tests'
         & $Python.Source -m pytest $TestDir -v --tb=short
         if ($LASTEXITCODE -ne 0) {

@@ -144,6 +144,9 @@ msg_layout      db '    0x00000-0x003FF  1 KB    IVT (Interrupt Vector Table)', 
 
 ; --- Heap statistics strings --------------------------------------------------
 msg_heap_hdr    db 13, 10, '  Heap (INT 0x82):', 13, 10, 0
+msg_heap_type   db '    Type:     ', 0
+msg_heap_hma    db 'HMA (~64 KB)', 13, 10, 0
+msg_heap_conventional db 'Conventional (4 KB)', 13, 10, 0
 msg_heap_total  db '    Total:    ', 0
 msg_heap_used   db '    Used:     ', 0
 msg_heap_free   db '    Free:     ', 0

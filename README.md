@@ -333,6 +333,7 @@ Each version is a tagged release you can checkout to see the project at that sta
 | `v0.9.7` | **Machine Monitor (mnmon)** | MNMON.MNX — WinDbg-style memory monitor (db/dw/eb/ew/g); standalone user program; proves interactive program loading |
 | `v0.9.8` | **Parsed Arguments (argc/argv)** | Layer 2 command-line parsing; SYS_GET_ARGC/SYS_GET_ARGV syscalls; double-quote support; max 15 args; doc/COMMAND-LINE.md |
 | `v0.9.9` | **Unit Test Framework** | Python + Unicorn Engine test harness; 64 tests across 4 modules; statement + branch coverage with Capstone; historical trend tracking (Chart.js); CI/CD test job; doc/TESTING.md |
+| `v0.9.10` | **HMA Heap + TPA Expansion** | Dynamic memory moved to HMA (~64 KB); TPA expanded 26→30 KB; auto-generated test constants; shell/MNMON HMA-aware |
 
 ```cmd
 git checkout v0.1.0      # see the project at any prior milestone

@@ -1,39 +1,32 @@
 # MNMM — Mini-OS Memory Manager
 
-**Version:** 2.0 (Design + Implementation)
-**Status:** Implemented — v0.9.0
+**Version:** 3.0 (HMA Support)
+**Status:** Implemented — v0.9.10
 **Author:** mini-os project
-**Date:** 2026-05-13
+**Date:** 2026-05-18
 
 ---
 
 ## 1. Overview
 
 MNMM (Mini-OS Memory Manager) provides **dynamic memory allocation** for
-mini-os.  It manages a contiguous heap region in conventional memory, offering
+mini-os.  It manages a heap in the **High Memory Area (HMA)** — the ~64 KB
+region above 1 MB accessible from real mode when A20 is enabled — offering
 allocate/free semantics through `INT 0x82` software interrupts.
-
-Today, every mini-os component uses statically placed memory — KERNEL at 0x5000,
-SHELL at 0x3000, FS.SYS at 0x0800.  This works when the number of components is
-fixed and known at build time.  But the moment you need a variable-size buffer,
-a dynamically loaded program, or a data structure that grows at runtime, static
-placement breaks down.
-
-MNMM bridges that gap: it turns the large block of unused RAM above the boot
-area into a managed heap where any component can request and release memory at
-runtime.
 
 ### 1.1 Key Specifications
 
 | Property             | Value                                            |
 |----------------------|--------------------------------------------------|
-| Heap region          | `0x8000`–`0xF7FF` (30 KB)                        |
+| Heap region (HMA)    | `FFFF:0010`–`FFFF:FF00` (~64 KB)                 |
+| A20 failure behavior | Heap disabled (size=0, allocations fail with CF)  |
 | Minimum allocation   | 4 bytes usable (8-byte block including header)    |
 | Alignment            | Word-aligned (2-byte)                             |
 | Algorithm            | First-fit with forward coalescing                 |
-| Binary               | `MM.SYS` loaded at `0x2800` (max 2 KB)            |
+| Binary               | `MM.SYS` loaded at `0x2800` (max 2 KB code)      |
 | Interface            | `INT 0x82` (AH = function selector)               |
 | Overhead per block   | 4 bytes (size + flags + magic)                    |
+| Segment access       | Callers use ES:BX (AX=segment returned by alloc)  |
 
 ### 1.2 Design Goals
 
@@ -116,88 +109,64 @@ constrained environment.
 
 ### 3.1 Where Does the Heap Live?
 
-After the boot sequence completes, the following regions are **dead** (no longer
-needed):
+With A20 enabled (standard since v0.3.0), mini-os places the heap in the
+**High Memory Area (HMA)**: physical addresses 0x100000–0x10FEFF, accessed
+via segment 0xFFFF with offsets 0x0010–0xFF00.
+
+This gives **~64 KB** of heap without consuming any conventional memory.
+The MM.SYS code itself remains in conventional memory at 0x2800; only the
+heap data lives above 1 MB.
 
 ```
-Address Range   Size    Original Purpose          Status After Boot
-─────────────────────────────────────────────────────────────────────
-0x7C00–0x7DFF    512 B  VBR code                  Dead (LOADER took over)
-0x7E00–0x9DFF   8 KB    VBR load buffer           Dead (staging area)
-```
-
-Combined with the RAM above the VBR load buffer (0x9E00 onward), there is a
-large contiguous block of unused memory in segment 0:
-
-```
-0x7C00 ─ 0xFFFF  =  33,792 bytes  ≈  33 KB
-```
-
-However, the first 2 KB of this (0x7C00–0x7FFF) overlaps with the old VBR area
-and sits just above the stack.  For cleanliness and a nice round boundary, MNMM
-claims:
-
-```
-Heap start:  0x8000   (32 KB mark — clean boundary)
-Heap end:    0xF7FF   (inclusive; 0xF800–0xFFFF reserved)
-Heap size:   0x77FF   =  30,720 bytes  =  30 KB exactly
-```
-
-The reserved 2 KB at 0xF800–0xFFFF provides:
-- A **guard zone** between heap and the segment wrap boundary
-- Space for future MNMM metadata if the data area at 0x2800 becomes tight
-- Protection against off-by-one errors at the heap top
-
-### 3.2 Updated Memory Map (v0.8.0)
-
-```
-Address       Size      Contents                 Lifetime
+HIGH MEMORY AREA (segment 0xFFFF, physical 0x100000+)
 ─────────────────────────────────────────────────────────────────
-0x0000:0x0000  1024 B   IVT (256 × 4-byte ptrs)  Permanent (BIOS)
-0x0000:0x0400   256 B   BIOS Data Area (BDA)      Permanent (BIOS)
-0x0000:0x0500   256 B   Free (BIOS-safe area)     Available
-
-0x0000:0x0600    16 B   Boot Info Block (BIB)     Permanent
-
-0x0000:0x0610   496 B   (Unused gap)              Available
-
-0x0000:0x0800  8192 B   FS.SYS                    Permanent (runtime)
-               (8 KB)    INT 0x81 filesystem       (LOADER.SYS here at boot,
-                                                    then overwritten by kernel)
-
-0x0000:0x2800  2048 B   MNMM.SYS   ← NEW         Permanent (runtime)
-               (2 KB)    INT 0x82 memory manager   Loaded by KERNEL after
-                                                    FS.SYS, before SHELL
-
-0x0000:0x3000  8192 B   SHELL.SYS                 Permanent (runtime)
-               (8 KB)
-
-0x0000:0x5000  8192 B   KERNEL.SYS                Permanent (runtime)
-               (8 KB)
-
-0x0000:0x7000  3072 B   Stack (grows ↓)           Active
-               (3 KB)    SP starts at 0x7C00
-
-0x0000:0x7C00   512 B   (Dead — was VBR)          Reclaimable
-0x0000:0x7E00  8192 B   (Dead — was load buffer)  Reclaimable
-
-0x0000:0x8000 30720 B   ═══ MNMM HEAP ═══        Managed by MNMM
-              (30 KB)    Dynamic allocation pool   INT 0x82 alloc/free
-                         First-fit, 8-byte aligned
-
-0x0000:0xF800  2048 B   (Guard / reserved)        Unused
-               (2 KB)
-
-0x0000:0xFFFF            End of Segment 0
+FFFF:0010       Heap start (physical 0x100000)
+FFFF:FF00       Heap end   (physical 0x10FEF0)
+                ═══ 65,264 bytes (~63.7 KB) of managed heap ═══
+FFFF:FF01+      Guard zone (256 bytes, prevents wrap)
 ```
 
-### 3.3 Why Segment 0?
+If A20 is non-functional (extremely rare), the heap is disabled entirely
+(heap_size=0) and all allocations fail with CF set.  This allows the TPA
+to span 0x8000–0xF7FF (30 KB) without reservation for a fallback heap.
 
-All mini-os code runs in segment 0 (DS = ES = SS = 0x0000).  Heap pointers
-are plain 16-bit offsets within this segment.  This means:
+### 3.2 HMA Advantages
 
-- **No segment arithmetic** — pointers are just unsigned 16-bit integers
-- **Maximum addressable**: 0xFFFF (64 KB total in segment 0)
+| Benefit | Explanation |
+|---------|-------------|
+| **16× larger heap** | 64 KB vs the original 4 KB conventional heap |
+| **Frees conventional RAM** | TPA expanded from 26 KB to 30 KB |
+| **No CPU mode switch** | Real-mode segment addressing, no protected mode |
+| **A20 already enabled** | mini-os enables A20 at boot (3 fallback methods) |
+
+### 3.3 A20 Validation
+
+At MM init time, the allocator performs an alias check:
+1. Save original values at `0000:0000` and `FFFF:0010`
+2. Write distinct values to both
+3. If they remain distinct → A20 is active → use HMA
+4. If `0000:0000` was overwritten → aliased → A20 failed → heap disabled
+5. Restore original values in all cases
+
+### 3.4 Why Not Just DS:offset?
+
+With the heap in segment 0xFFFF, callers must use `ES:BX` to access allocations:
+
+```nasm
+; Allocate 100 bytes
+mov  ah, 0x01          ; MEM_ALLOC
+mov  cx, 100           ; size
+mov  dl, 4             ; owner = SHELL
+int  0x82
+; Returns: AX = 0xFFFF (segment), BX = offset
+; Access:
+mov  es, ax
+mov  byte [es:bx], 'H' ; write to allocated memory
+```
+
+This is the trade-off: slightly more complex caller code in exchange for
+16× more heap. All system modules (kernel, shell, FS) already work with
+multiple segments for hardware access, so the pattern is not unfamiliar.
 - **No far pointers needed** — every component shares the same segment
 - **Compatible with `mnmon`** — the monitor examines segment 0 by default
 
@@ -755,15 +724,19 @@ exceeds a few dozen entries.  The scan is trivially fast.
 ├──────┬────────────────┬──────────────────┬────────────────────┤
 │  AH  │  Function      │  Input           │  Output            │
 ├──────┼────────────────┼──────────────────┼────────────────────┤
-│ 0x01 │ MEM_ALLOC      │ CX = size (bytes)│ BX = ptr (0=fail)  │
-│      │                │ DL = owner (0-7) │ CF = error          │
-│ 0x02 │ MEM_FREE       │ BX = ptr         │ CF = error         │
+│ 0x01 │ MEM_ALLOC      │ CX = size (bytes)│ AX = segment       │
+│      │                │ DL = owner (0-7) │ BX = offset         │
+│      │                │                  │ CF = error          │
+│ 0x02 │ MEM_FREE       │ BX = offset      │ CF = error         │
 │ 0x03 │ MEM_AVAIL      │ (none)           │ AX = largest free  │
-│      │                │                  │ BX = total free    │
-│ 0x04 │ MEM_INFO       │ (none)           │ AX = heap start    │
-│      │                │                  │ BX = heap end      │
-│      │                │                  │ CX = alloc count   │
-│      │                │                  │ DX = free count    │
+│      │                │                  │ DX = total free    │
+│ 0x04 │ MEM_INFO       │ (none)           │ AX = heap size     │
+│      │                │                  │ BX = bytes used    │
+│      │                │                  │ CX = bytes free    │
+│      │                │                  │ DX = block count   │
+│ 0x05 │ MEM_QUERY      │ (none)           │ AX = heap segment  │
+│      │                │                  │ BX = heap start    │
+│      │                │                  │ CX = heap size     │
 └──────┴────────────────┴──────────────────┴────────────────────┘
 ```
 
@@ -774,15 +747,15 @@ Allocate a contiguous block of memory.
 ```
 Input:
     AH    = 0x01
-    CX    = requested size in bytes (1–30716)
+    CX    = requested size in bytes (1–65260)
     DL    = owner ID (0–7, see §5.2 Owner IDs table)
 
 Output (success):
-    BX    = pointer to usable memory (block_addr + 4)
+    AX    = heap segment (0xFFFF for HMA)
+    BX    = offset to usable memory (block_addr + 4)
     CF    = clear
 
 Output (failure):
-    BX    = 0x0000
     CF    = set
 
 Failure reasons:
@@ -799,11 +772,10 @@ Failure reasons:
     mov dl, MCB_OWNER_FS    ; owned by file system
     int 0x82
     jc .alloc_failed        ; CF set = out of memory
-    mov [file_buf], bx      ; save pointer
 
-    ; Use the buffer...
-    mov di, [file_buf]
-    mov byte [di], 'H'      ; write to allocated memory
+    ; AX = segment (0xFFFF), BX = offset
+    mov es, ax              ; Set ES to heap segment
+    mov byte [es:bx], 'H'  ; write to allocated memory
 
 .alloc_failed:
     ; Handle error — print message, etc.
@@ -811,8 +783,8 @@ Failure reasons:
 
 **Behavior notes:**
 
-- The returned pointer is **always 8-byte aligned** and points past the
-  internal 4-byte header.  The caller does not see or manage the header.
+- The returned pointer is a **segment:offset pair** (AX:BX).  Callers must
+  use `ES:BX` (or equivalent) to access allocated memory.
 - Allocated memory is **not zeroed** in release builds.  Contents are
   undefined.  In debug builds, memory is filled with `0xCC` (see §10.1).
 - The actual allocated size may be slightly larger than requested (due to

@@ -39,8 +39,7 @@ This is the mini-os equivalent of DOS's `COMMAND.COM` loading `.COM` files.
 0x7C00 ─────── Stack (grows down from here)
 0x7FFC ─────── SHELL_ARGS_PTR (2 bytes, ABI slot)
 0x7FFE ─────── SHELL_SAVED_SP (2 bytes, ABI slot)
-0x8000 ─────── HEAP (4 KB, system allocations only)
-0x9000 ─────── USER_PROG_BASE — Transient Program Area (TPA)
+0x8000 ─────── USER_PROG_BASE — Transient Program Area (TPA)
   ...           (program code + data + BSS)
 0xF7FF ─────── USER_PROG_END — end of TPA
 0xF800 ─────── End of usable conventional memory
@@ -49,20 +48,19 @@ This is the mini-os equivalent of DOS's `COMMAND.COM` loading `.COM` files.
 ### 3.2 Key Constants
 
 ```nasm
-USER_PROG_SEG   equ 0x0900      ; Segment for user programs (0x0900:0x0000 = 0x9000)
-USER_PROG_BASE  equ 0x9000      ; Linear address where programs are loaded
+USER_PROG_BASE  equ 0x8000      ; Linear address where programs are loaded
 USER_PROG_END   equ 0xF7FF      ; Last usable byte in TPA
-USER_PROG_MAX   equ 0x6800      ; Maximum program size (26 KB = 0xF800 - 0x9000)
+USER_PROG_MAX   equ 0x7800      ; Maximum program size (30 KB)
 ```
 
-### 3.3 Heap Reduction
+### 3.3 Heap in HMA (no conventional heap)
 
-The heap shrinks from 30 KB (0x8000–0xF7FF) to 4 KB (0x8000–0x8FFF):
-- **Reason**: TPA occupies 0x9000–0xF7FF, previously heap space
-- **Impact**: System allocations (kernel, FS, MM, shell) share 4 KB
-- **Mitigation**: Current system usage is minimal; 4 KB is sufficient for
-  MCB chain, FS buffers, and shell line buffer
-- MM.SYS `mm_init` must be updated to use new heap end (0x8FFF instead of 0xF7FF)
+The heap resides entirely in the High Memory Area (segment 0xFFFF, offsets
+0x0010–0xFF00, ~64 KB).  The old conventional heap at 0x8000 is eliminated,
+allowing the TPA to start at 0x8000 instead of 0x9000:
+- **TPA expanded**: 26 KB → 30 KB
+- **Heap**: ~64 KB in HMA (requires A20, enabled at boot)
+- **A20 failure**: Heap disabled (size=0), allocations fail with CF set
 
 ---
 
@@ -80,11 +78,11 @@ Offset  Size  Field         Description
 
 ### 4.1 Program Requirements
 
-- Assembled with `[ORG 0x9000]`
+- Assembled with `[ORG USER_PROG_BASE]` (currently 0x8000)
 - Entry point at offset 6 (immediately after the 6-byte header)
 - Must return to caller via `ret` or invoke `SYS_EXIT` (INT 0x80, AH=0x23)
 - May use INT 0x80 (kernel), INT 0x81 (filesystem), INT 0x82 (memory manager)
-- Must not write below 0x9000 or above 0xF7FF
+- Must not write below USER_PROG_BASE or above 0xF7FF
 - Must preserve SS:SP (stack is shared with shell)
 
 ### 4.2 Minimal Example: HELLO.MNX
@@ -93,7 +91,8 @@ Offset  Size  Field         Description
 ; HELLO.MNX — minimal user program
 ; Prints "Hello, world!" and returns to shell
 ;
-[ORG 0x9000]
+%include "memory.inc"
+[ORG USER_PROG_BASE]
 [BITS 16]
 
 ; --- MNEX Header (6 bytes) ---
@@ -169,13 +168,13 @@ User types: HELLO
      ▼
 ┌─────────────────────────────────────────┐
 │ 4. Size check                           │
-│    File size ≤ USER_PROG_MAX (26 KB)    │
+│    File size ≤ USER_PROG_MAX (30 KB)    │
 │    → fail? "Program too large"          │
 └─────────────────────────────────────────┘
      │
      ▼
 ┌─────────────────────────────────────────┐
-│ 5. Load file to USER_PROG_BASE (0x9000) │
+│ 5. Load file to USER_PROG_BASE (0x8000) │
 │    via INT 0x81 FS_READ_FILE            │
 │    → fail? "Load error"                 │
 └─────────────────────────────────────────┘
@@ -183,7 +182,7 @@ User types: HELLO
      ▼
 ┌─────────────────────────────────────────┐
 │ 6. Magic validation                     │
-│    Check [0x9000] == 'MNEX' (4 bytes)   │
+│    Check [0x8000] == 'MNEX' (4 bytes)   │
 │    → fail? "Invalid program header"     │
 └─────────────────────────────────────────┘
      │
@@ -226,7 +225,7 @@ Programs must pass ALL checks before execution:
 Bad command or file not found
 Not executable (.mnx required)
 System module, cannot run in user mode
-Program too large (26 KB max)
+Program too large (30 KB max)
 Load error
 Invalid program header
 ```
@@ -368,16 +367,16 @@ would not return to the shell.  SYS_EXIT provides an escape hatch by
 restoring the shell's SP and executing `ret`, effectively unwinding the
 entire program stack in one step.
 
-### 9.3 Why shrink the heap?
+### 9.3 Why eliminate the conventional heap?
 
-The TPA (0x9000–0xF7FF) overlaps the current heap (0x8000–0xF7FF).  Rather
-than relocating the heap (complex), we shrink it to 4 KB (0x8000–0x8FFF).
-System allocations are small and infrequent — 4 KB is more than sufficient
-for current usage (shell line buffer, FS sector cache).
+The heap now lives entirely in the HMA (~64 KB at segment 0xFFFF).  Since the
+old 4 KB conventional heap at 0x8000 is no longer needed, that region is
+reclaimed for the TPA — expanding it from 26 KB (0x9000–0xF7FF) to 30 KB
+(0x8000–0xF7FF).
 
-User programs that need dynamic memory can use INT 0x82 (MEM_ALLOC), but
-they will be allocating from the reduced 4 KB heap.  A future enhancement
-could provide a separate user heap within the TPA.
+If A20 is non-functional (extremely rare on any modern system), the heap is
+disabled entirely (size=0, all allocations return CF).  This is acceptable
+because mini-os already requires A20 for its boot process.
 
 ### 9.4 Why not segment-based isolation?
 
@@ -395,11 +394,12 @@ No single check is sufficient:
 - Magic alone: doesn't prevent running system files
 - Combined: defense-in-depth, catches mistakes and corruption
 
-### 9.6 Why ORG 0x9000?
+### 9.6 Why ORG USER_PROG_BASE?
 
 Programs must know their load address for absolute references (strings,
-jump tables).  `[ORG 0x9000]` tells NASM to generate addresses relative to
-the TPA base.  This mirrors DOS `.COM` files using `[ORG 0x0100]`.
+jump tables).  `[ORG USER_PROG_BASE]` tells NASM to generate addresses
+relative to the TPA base (0x8000).  This mirrors DOS `.COM` files using
+`[ORG 0x0100]`.
 
 ---
 
@@ -432,7 +432,7 @@ the TPA base.  This mirrors DOS `.COM` files using `[ORG 0x0100]`.
 1. **HELLO.MNX** — basic load + print + return
 2. **Run nonexistent file** — "Bad command or file name" error
 3. **Run KERNEL.SYS** — "System module, cannot run in user mode"
-4. **Run file > 26 KB** — "Program too large" error
+4. **Run file > 30 KB** — "Program too large" error
 5. **Run corrupt .MNX** — "Invalid program header" (bad magic)
 6. **Program using SYS_EXIT** — clean return from nested call
 7. **Program using SYS_GET_ARGS** — verify argument passing

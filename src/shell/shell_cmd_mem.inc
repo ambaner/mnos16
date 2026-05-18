@@ -187,13 +187,49 @@ cmd_mem:
     jnz .mem_e820_loop
 
 .mem_e820_done:
+    ; --- Pause before heap section (output may exceed one screen) -------------
+    mov si, msg_anykey
+    mov ah, SYS_PRINT_STRING
+    int 0x80
+    mov ah, SYS_READ_KEY            ; Wait for any keypress
+    int 0x80
+    mov si, msg_crlf
+    mov ah, SYS_PRINT_STRING
+    int 0x80
+
     ; --- Heap Statistics (INT 0x82 MEM_INFO + MEM_AVAIL) ----------------------
     mov si, msg_heap_hdr
     mov ah, SYS_PRINT_STRING
     int 0x80
 
+    ; MEM_QUERY: AX=segment, BX=start, CX=size — detect HMA vs conventional
+    mov ah, MEM_QUERY
+    int 0x82
+
+    ; Show heap type based on segment
+    push cx                         ; Save heap size for later
+    push bx                         ; Save heap start for walk
+    push ax                         ; Save segment for walk
+
+    mov si, msg_heap_type
+    mov ah, SYS_PRINT_STRING
+    int 0x80
+
+    ; Check if segment is HMA_SEG (0xFFFF)
+    pop ax                          ; Peek segment (re-push below)
+    push ax
+    cmp ax, HMA_SEG
+    jne .mem_heap_conv
+    mov si, msg_heap_hma
+    jmp .mem_heap_type_print
+.mem_heap_conv:
+    mov si, msg_heap_conventional
+.mem_heap_type_print:
+    mov ah, SYS_PRINT_STRING
+    int 0x80
+
     ; MEM_INFO: AX=total, BX=used, CX=free, DX=block count
-    mov ah, 0x04                    ; MEM_INFO
+    mov ah, MEM_INFO
     int 0x82
 
     ; Save results
@@ -247,7 +283,7 @@ cmd_mem:
     int 0x80
 
     ; MEM_AVAIL: AX=largest free, DX=total free (usable bytes)
-    mov ah, 0x03                    ; MEM_AVAIL
+    mov ah, MEM_AVAIL
     int 0x82
 
     mov si, msg_heap_largest
@@ -261,19 +297,25 @@ cmd_mem:
     mov ah, SYS_PRINT_STRING
     int 0x80
 
-    ; --- Heap Block Detail (direct walk of MCB chain) -------------------------
+    ; --- Heap Block Detail (direct walk of MCB chain via ES:) -----------------
     mov si, msg_heap_detail_hdr
     mov ah, SYS_PRINT_STRING
     int 0x80
 
-    mov di, HEAP_START               ; DI = current block pointer
+    ; Restore heap segment and start from MEM_QUERY results
+    pop ax                          ; segment
+    pop di                          ; heap start offset
+    pop cx                          ; heap size (used as end = start + size)
+    add cx, di                      ; CX = heap end offset
+    mov [.mem_heap_end], cx         ; Store end for comparison
+    mov es, ax                      ; ES = heap segment
 
 .mem_heap_walk:
-    cmp di, HEAP_END
+    cmp di, [.mem_heap_end]
     jae .mem_heap_done
 
-    ; Validate magic
-    cmp byte [di + MCB_MAGIC_OFF], MCB_MAGIC
+    ; Validate magic (via ES:)
+    cmp byte [es:di + MCB_MAGIC_OFF], MCB_MAGIC
     jne .mem_heap_done               ; Corrupted — stop
 
     ; Print block address
@@ -288,12 +330,12 @@ cmd_mem:
     mov si, msg_heap_sz_eq
     mov ah, SYS_PRINT_STRING
     int 0x80
-    mov dx, [di + MCB_SIZE_OFF]
+    mov dx, [es:di + MCB_SIZE_OFF]
     mov ah, SYS_PRINT_DEC16
     int 0x80
 
     ; Print status (free/used)
-    test byte [di + MCB_FLAGS_OFF], MCB_FLAG_USED
+    test byte [es:di + MCB_FLAGS_OFF], MCB_FLAG_USED
     jz .mem_block_free
 
     ; Allocated — print owner name
@@ -302,7 +344,7 @@ cmd_mem:
     int 0x80
 
     ; Extract owner ID: (flags >> 1) & 0x07
-    mov al, [di + MCB_FLAGS_OFF]
+    mov al, [es:di + MCB_FLAGS_OFF]
     shr al, MCB_OWNER_SHIFT
     and al, 0x07
 
@@ -320,13 +362,20 @@ cmd_mem:
     int 0x80
 
 .mem_block_next:
-    ; Advance to next block
-    add di, [di + MCB_SIZE_OFF]
+    ; Advance to next block (size from ES:)
+    add di, [es:di + MCB_SIZE_OFF]
     jmp .mem_heap_walk
 
 .mem_heap_done:
+    ; Restore ES to 0 (normal DS-relative state)
+    xor ax, ax
+    mov es, ax
+
     mov si, msg_crlf
     mov ah, SYS_PRINT_STRING
     int 0x80
     jmp shell_prompt
+
+; Local variable for heap end offset
+.mem_heap_end: dw 0
 

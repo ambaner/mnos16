@@ -212,6 +212,9 @@ jobs:
     - name: Install test dependencies
       run: pip install -r tests/requirements.txt
 
+    - name: Generate test constants from .inc files
+      run: python tests/gen_constants.py
+
     - name: Fetch coverage history
       if: github.ref == 'refs/heads/main'
       continue-on-error: true

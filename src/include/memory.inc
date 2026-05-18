@@ -44,6 +44,27 @@ STACK_CANARY_VALUE equ 0xDEAD        ; Sentinel value (written as two words)
 STACK_CANARY_SIZE  equ 4             ; Total canary size in bytes
 
 ; =============================================================================
+; High Memory Area (HMA) constants
+;
+; The HMA is the 65,520 bytes above 1 MB accessible from real mode when
+; A20 is enabled.  Segment 0xFFFF with offsets 0x0010–0xFFFF maps to
+; physical addresses 0x100000–0x10FFEF.
+;
+; mini-os uses the HMA as the primary heap region (~64 KB), replacing the
+; conventional 4 KB heap.  The MM.SYS code stays in conventional memory;
+; only the heap data lives in HMA.
+;
+; Callers receive AX=0xFFFF, BX=offset from MEM_ALLOC and must access
+; allocated memory via ES:BX (mov es, ax; mov [es:bx], value).
+;
+; If A20 fails (extremely rare), MM falls back to the conventional heap.
+; =============================================================================
+HMA_SEG         equ 0xFFFF           ; Segment register value for HMA
+HMA_HEAP_START  equ 0x0010           ; First usable offset (physical 0x100000)
+HMA_HEAP_END    equ 0xFF00           ; Exclusive end (256-byte guard at top)
+HMA_HEAP_SIZE   equ HMA_HEAP_END - HMA_HEAP_START  ; 65,264 bytes (~63.7 KB)
+
+; =============================================================================
 ; Memory Manager (MNMM) constants
 ;
 ; MM.SYS is loaded by the kernel at 0x2800, between the FS.SYS max boundary
@@ -58,26 +79,29 @@ MM_SEG          equ 0x0000           ; Segment for MM.SYS (flat model)
 MM_OFF          equ 0x2800           ; Offset for MM.SYS
 MM_MAX_SECTORS  equ 4                ; Max 4 sectors (2 KB) before SHELL
 
-HEAP_START      equ 0x8000           ; Heap region start
-HEAP_END        equ 0x9000           ; Heap end (exclusive: last usable = 0x8FFF)
+HEAP_START      equ 0x8000           ; Legacy conventional heap start (test harness only)
+HEAP_END        equ 0x9000           ; Legacy conventional heap end (test harness only)
 HEAP_SIZE       equ HEAP_END - HEAP_START  ; 4,096 bytes (4 KB)
 
 ; =============================================================================
 ; Transient Program Area (TPA) — user program loading zone
 ;
 ; User executables (.MNX files) are loaded into the TPA by the shell's `run`
-; command.  The TPA occupies the region immediately above the 4 KB heap:
-;   0x9000–0xF7FF (26 KB max program size)
+; command.  The TPA occupies the region above the shell ABI area:
+;   0x8000–0xF7FF (30 KB max program size)
 ;
-; Programs are assembled with [ORG 0x9000] and execute in flat segment 0.
+; This was expanded from 26 KB (starting at 0x9000) when the heap moved to
+; the HMA.  The old 4 KB conventional heap at 0x8000 is no longer needed.
+;
+; Programs are assembled with [ORG 0x8000] and execute in flat segment 0.
 ; The TPA is not persistent — it is overwritten on each `run` invocation.
 ;
 ; See doc/PROGRAM-LOADER.md for the complete specification.
 ; =============================================================================
-USER_PROG_BASE  equ 0x9000           ; Linear address: program load point
+USER_PROG_BASE  equ 0x8000           ; Linear address: program load point
 USER_PROG_END   equ 0xF7FF           ; Last usable byte in TPA
-USER_PROG_MAX   equ 0x6800           ; Maximum program size (26 KB)
-USER_PROG_MAX_SEC equ 52             ; Maximum program size in sectors (26KB/512)
+USER_PROG_MAX   equ 0x7800           ; Maximum program size (30 KB)
+USER_PROG_MAX_SEC equ 60             ; Maximum program size in sectors (30KB/512)
 
 ; =============================================================================
 ; Shell/Kernel shared state — Program loader ABI
@@ -160,5 +184,6 @@ MEM_ALLOC       equ 0x01             ; Allocate memory
 MEM_FREE        equ 0x02             ; Free memory
 MEM_AVAIL       equ 0x03             ; Query available memory
 MEM_INFO        equ 0x04             ; Query heap statistics
+MEM_QUERY       equ 0x05             ; Query heap location (seg/start/size)
 
-MEM_SYSCALL_MAX equ 0x04             ; Highest valid MM syscall number
+MEM_SYSCALL_MAX equ 0x05             ; Highest valid MM syscall number

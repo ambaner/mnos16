@@ -13,8 +13,9 @@ Thumbs.db
 # Copilot session context
 .copilot-context.md
 
-# Test artifacts (assembled stubs, coverage reports)
+# Test artifacts (assembled stubs, coverage reports, generated constants)
 tests/bin/
+tests/harness/constants.py
 coverage/
 .pytest_cache/
 __pycache__/
