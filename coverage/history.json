@@ -25,5 +25,32 @@
         "branch": 100.0
       }
     }
+  },
+  {
+    "timestamp": "2026-05-18T22:30:28.145081+00:00",
+    "statement_coverage": 43.9,
+    "branch_coverage": 87.0,
+    "total_addresses": 670,
+    "hit_addresses": 294,
+    "branch_outcomes_total": 100,
+    "branch_outcomes_covered": 87,
+    "routines": {
+      "mm_allocator": {
+        "stmt": 39.4,
+        "branch": 84.1
+      },
+      "shell_parse_args": {
+        "stmt": 52.7,
+        "branch": 89.3
+      },
+      "run_parse_filename": {
+        "stmt": 42.8,
+        "branch": 87.5
+      },
+      "strcmp": {
+        "stmt": 69.2,
+        "branch": 100.0
+      }
+    }
   }
 ]
