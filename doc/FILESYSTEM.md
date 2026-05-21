@@ -1,7 +1,7 @@
 # MNFS — Mini-OS Flat Filesystem Specification
 
-**Version:** 1.0
-**Status:** Design — v0.6.0
+**Version:** 1.1
+**Status:** Design — v0.9.11
 
 ---
 
@@ -297,7 +297,7 @@ This mirrors how the kernel uses `INT 0x80` for system calls.  The separation
 into two interrupt vectors provides clean architectural layering:
 
 - **INT 0x80** — Kernel services (video, keyboard, memory, disk I/O)
-- **INT 0x81** — Filesystem services (directory listing, file lookup, file read)
+- **INT 0x81** — Filesystem services (directory listing, file lookup, file read/write/delete/rename)
 
 ### 8.1 Function Table
 
@@ -307,6 +307,9 @@ into two interrupt vectors provides clean architectural layering:
 | 0x02| FS_FIND_FILE    | Find a file by 8.3 name              |
 | 0x03| FS_READ_FILE    | Read a file's contents into memory   |
 | 0x04| FS_GET_INFO     | Get filesystem metadata              |
+| 0x06| FS_WRITE_FILE   | Write/create a file on disk          |
+| 0x07| FS_DELETE_FILE   | Delete a file (tombstone)            |
+| 0x08| FS_RENAME_FILE  | Rename a file                        |
 
 ### 8.2 FS_LIST_FILES (AH=0x01)
 
@@ -381,6 +384,102 @@ Output:
 ```
 
 The shell uses DX and BX to calculate and display used/free space statistics.
+
+### 8.6 FS_WRITE_FILE (AH=0x06)
+
+Writes (creates or overwrites) a file on disk.  If the file already exists, it
+is overwritten in place (must fit in existing allocation) or an error is
+returned.  If it does not exist, a new directory entry is allocated and sectors
+are appended after the current high-water mark.
+
+```
+Input:
+  AH    = 0x06
+  DS:SI = pointer to 11-byte filename (8 name + 3 ext, space-padded, uppercase)
+  ES:BX = pointer to file data
+  ECX   = file size in bytes
+
+Output:
+  CF clear = success
+  CF set   = error:
+    AL = error code (see §8.9)
+```
+
+The directory header's `total_sectors` field is updated to reflect the new
+high-water mark after a successful write.
+
+### 8.7 FS_DELETE_FILE (AH=0x07)
+
+Deletes a file by marking its directory entry as a tombstone.  The first byte
+of the filename is overwritten with `0xE5` (see §8.10 Tombstone Semantics).
+System files (ATTR_SYSTEM) are protected and cannot be deleted.
+
+```
+Input:
+  AH    = 0x07
+  DS:SI = pointer to 11-byte filename
+
+Output:
+  CF clear = success
+  CF set   = error:
+    AL = error code (see §8.9)
+```
+
+### 8.8 FS_RENAME_FILE (AH=0x08)
+
+Renames a file by updating the 11-byte name in its directory entry.  The new
+name must not already exist in the directory.
+
+```
+Input:
+  AH    = 0x08
+  DS:SI = pointer to old 11-byte filename
+  ES:DI = pointer to new 11-byte filename
+
+Output:
+  CF clear = success
+  CF set   = error:
+    AL = error code (see §8.9)
+```
+
+### 8.9 Error Codes
+
+When a write operation fails (CF=1), AL contains one of these error codes:
+
+| Code | Constant          | Meaning                                    |
+|------|-------------------|--------------------------------------------|
+| 1    | FS_ERR_NOT_FOUND  | File not found (delete/rename target)      |
+| 2    | FS_ERR_EXISTS     | File already exists (rename destination)   |
+| 3    | FS_ERR_DIR_FULL   | Directory full (15 entries, no tombstones) |
+| 4    | FS_ERR_DISK_FULL  | Not enough free sectors for file data      |
+| 5    | FS_ERR_IO         | Disk I/O error during read or write        |
+| 6    | FS_ERR_PROTECTED  | File is system-protected (ATTR_SYSTEM)     |
+
+### 8.10 Tombstone Semantics
+
+Deleted files use a **tombstone** marker rather than compacting the directory:
+
+- When a file is deleted, `name[0]` is set to `0xE5` (the FAT-compatible
+  tombstone byte).  All other entry fields are preserved.
+- Directory scans (FS_LIST_FILES, FS_FIND_FILE) skip entries where
+  `name[0] == 0xE5`.
+- FS_WRITE_FILE reuses tombstoned entries when allocating new directory slots.
+- The `file_count` in the directory header is decremented on delete.
+- `total_sectors` is recalculated as the high-water mark (highest
+  `start_sector + size_sectors` of any live entry) — it does not shrink to
+  fill gaps left by deleted files because MNFS uses contiguous allocation.
+
+### 8.11 Disk Space Management
+
+MNFS uses a simple contiguous allocation model with high-water-mark tracking:
+
+- New files are written at the sector immediately after the last used sector
+  (tracked by `total_sectors` in the directory header).
+- Deleted file sectors become unreclaimable gaps — there is no compaction or
+  free-space bitmap.
+- Free space = `capacity - total_sectors` (from FS_GET_INFO).
+- This mirrors early FAT/CP/M behavior: simple, predictable, and sufficient
+  for an educational OS with a small number of files.
 
 ---
 
@@ -534,7 +633,7 @@ determined by the directory table at build time.
 | 15 files maximum            | 1-sector directory, 32-byte entries          |
 | No subdirectories           | Flat filesystem by design                    |
 | No fragmentation            | Files must be contiguous sectors             |
-| No write support            | Read-only — files created at build time      |
+| No defragmentation          | Deleted file sectors leave unreclaimable gaps |
 | No timestamps               | Unnecessary for educational OS               |
 | 8.3 filenames only          | FAT-compatible, simple to implement          |
 | Single directory read       | No multi-sector directory support            |
@@ -547,7 +646,7 @@ These are not planned for v0.6.0 but the design accommodates them:
 
 | Extension                | How it could be added                          |
 |--------------------------|------------------------------------------------|
-| Write support            | Add `FS_WRITE_FILE` to INT 0x81, manage free space |
+| Defragmentation          | Compact directory and data area to reclaim gaps |
 | Long filenames           | Use reserved bytes in entry, or chain entries  |
 | Multiple directories     | Multi-sector directory, parent pointers        |
 | File allocation table    | Replace contiguous layout with FAT-style chain |

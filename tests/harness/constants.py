@@ -97,6 +97,45 @@ SYS_GET_ARGC         = 0x25
 SYS_GET_ARGV         = 0x26
 SYSCALL_MAX          = 0x26
 
+# --- From mnfs.inc ----------------------------------------------------
+MNFS_DIR_SECTOR      = 2
+MNFS_DIR_SECTORS     = 1
+MNFS_MAGIC           = 0x53464E4D
+MNFS_HDR_SIZE        = 32
+MNFS_HDR_MAGIC       = 0
+MNFS_HDR_VERSION     = 4
+MNFS_HDR_COUNT       = 5
+MNFS_HDR_TOTAL       = 6
+MNFS_HDR_CAPACITY    = 8
+MNFS_ENTRY_SIZE      = 32
+MNFS_MAX_ENTRIES     = 15
+MNFS_NAME_LEN        = 11
+MNFS_ENT_NAME        = 0
+MNFS_ENT_ATTR        = 11
+MNFS_ENT_START       = 12
+MNFS_ENT_SECTORS     = 16
+MNFS_ENT_BYTES       = 18
+MNFS_ATTR_SYSTEM     = 0x01
+MNFS_ATTR_EXEC       = 0x02
+MNEX_HDR_SIZE        = 6
+FS_LIST_FILES        = 0x01
+FS_FIND_FILE         = 0x02
+FS_READ_FILE         = 0x03
+FS_GET_INFO          = 0x04
+FS_FIND_BASE         = 0x05
+FS_WRITE_FILE        = 0x06
+FS_DELETE_FILE       = 0x07
+FS_RENAME_FILE       = 0x08
+FS_SYSCALL_MAX       = 0x08
+FS_ERR_NOT_FOUND     = 0x01
+FS_ERR_EXISTS        = 0x02
+FS_ERR_DIR_FULL      = 0x03
+FS_ERR_DISK_FULL     = 0x04
+FS_ERR_IO            = 0x05
+FS_ERR_PROTECTED     = 0x06
+MNFS_DELETED         = 0xE5
+MNFS_WRITE_CHUNK     = 16
+
 # --- MM stub entry points (offsets from CODE_BASE) ----------------------------
 MM_ALLOC_ENTRY   = 0x00
 MM_FREE_ENTRY    = 0x10

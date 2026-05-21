@@ -16,13 +16,7 @@ cmd_dir:
     push ds
     pop es                          ; ES = DS (our segment)
     mov bx, dir_buffer              ; ES:BX → 512-byte buffer
-    int 0x81                        ; CL = file count
-
-    ; Save file count
-    movzx cx, cl
-    test cx, cx
-    jz .dir_empty
-    mov [dir_file_count], cx
+    int 0x81                        ; CL = file count (may include deleted)
 
     ; Print column headers
     mov si, msg_dir_cols
@@ -31,10 +25,18 @@ cmd_dir:
 
     ; SI → first directory entry (offset 32 in buffer = past header)
     mov si, dir_buffer + MNFS_HDR_SIZE
-    mov cx, [dir_file_count]
+    mov word [dir_file_count], 0    ; Will count non-deleted entries
+    mov cx, MNFS_MAX_ENTRIES        ; Scan all 15 slots
     xor dx, dx                      ; DX = total bytes accumulator (low word)
 
 .dir_loop:
+    ; Skip empty/deleted entries (tombstones)
+    cmp byte [si], 0x00
+    je .dir_skip_entry
+    cmp byte [si], MNFS_DELETED
+    je .dir_skip_entry
+
+    inc word [dir_file_count]
     push cx
     push dx
 
@@ -155,6 +157,17 @@ cmd_dir:
     pop cx
     dec cx
     jnz .dir_loop
+    jmp .dir_summary
+
+.dir_skip_entry:
+    add si, MNFS_ENTRY_SIZE
+    dec cx
+    jnz .dir_loop
+
+    ; Check if any files were found
+.dir_summary:
+    cmp word [dir_file_count], 0
+    je .dir_empty
 
     ; Print summary line
     push dx                         ; Save total bytes

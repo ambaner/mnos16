@@ -68,3 +68,9 @@ def strcmp_bin():
 def parse_fname_bin():
     """Assembled run_parse_filename stub binary."""
     return assemble_stub("stub_parse_fname")
+
+
+@pytest.fixture(scope="module")
+def cmdmatch_bin():
+    """Assembled cmdmatch stub binary."""
+    return assemble_stub("stub_cmdmatch")

@@ -41,9 +41,9 @@
 ; =============================================================================
 fs_magic        db 'MNFS'           ; Magic identifier — filesystem module
 %ifdef DEBUG
-fs_sectors      dw 5                ; Module size in sectors (debug build)
+fs_sectors      dw 8                ; Module size in sectors (debug build)
 %else
-fs_sectors      dw 3                ; Module size in sectors (release build)
+fs_sectors      dw 5                ; Module size in sectors (release build)
 %endif
 
 ; =============================================================================
@@ -125,7 +125,7 @@ fs_syscall_handler:
     call serial_puts
 
     movzx bx, ah
-    cmp bx, 5
+    cmp bx, 8
     ja .fs_trace_noname
     shl bx, 1
     mov si, [cs:.fs_name_table + bx]
@@ -157,6 +157,12 @@ fs_syscall_handler:
     je .fn_get_info
     cmp ah, FS_FIND_BASE
     je .fn_find_base
+    cmp ah, FS_WRITE_FILE
+    je .fn_write_file
+    cmp ah, FS_DELETE_FILE
+    je .fn_delete_file
+    cmp ah, FS_RENAME_FILE
+    je .fn_rename_file
 
     ; Unknown function
     jmp fs_iret_cf_set
@@ -169,6 +175,9 @@ fs_syscall_handler:
 .fsn_03: db 'READ_FILE', 0
 .fsn_04: db 'GET_INFO', 0
 .fsn_05: db 'FIND_BASE', 0
+.fsn_06: db 'WRITE_FILE', 0
+.fsn_07: db 'DELETE_FILE', 0
+.fsn_08: db 'RENAME_FILE', 0
 .fs_name_table:
     dw 0            ; 0x00 — unused
     dw .fsn_01      ; 0x01
@@ -176,6 +185,9 @@ fs_syscall_handler:
     dw .fsn_03      ; 0x03
     dw .fsn_04      ; 0x04
     dw .fsn_05      ; 0x05
+    dw .fsn_06      ; 0x06
+    dw .fsn_07      ; 0x07
+    dw .fsn_08      ; 0x08
 %endif
 
 ; ─── FS_LIST_FILES (AH=0x01) ─────────────────────────────────────────────────
@@ -228,10 +240,8 @@ fs_syscall_handler:
     ; Save caller's filename pointer
     mov [cs:.ff_caller_si], si
 
-    ; Set up search through cached directory
-    movzx cx, byte [cs:cached_count]
-    test cx, cx
-    jz .ff_not_found
+    ; Scan all 15 possible directory slots (not just cached_count)
+    mov cx, MNFS_MAX_ENTRIES
 
     ; DI → first entry in cache (CS-relative)
     ; We need to compare DS:SI (caller's name) with CS:entry
@@ -245,12 +255,19 @@ fs_syscall_handler:
     push cx
     push di
 
+    ; Skip deleted/empty entries
+    cmp byte [es:di], MNFS_DELETED
+    je .ff_skip
+    cmp byte [es:di], 0x00
+    je .ff_skip
+
     ; Compare 11 bytes: DS:SI (caller) vs ES:DI (our cache entry)
     mov si, [cs:.ff_caller_si]      ; Restore SI each iteration
     mov cx, MNFS_NAME_LEN
     repe cmpsb
     je .ff_match
 
+.ff_skip:
     pop di
     pop cx
     add di, MNFS_ENTRY_SIZE
@@ -308,10 +325,8 @@ fs_syscall_handler:
     ; Save caller's name pointer
     mov [cs:.fb_caller_si], si
 
-    ; Set up search through cached directory
-    movzx cx, byte [cs:cached_count]
-    test cx, cx
-    jz .fb_not_found
+    ; Scan all 15 possible directory slots
+    mov cx, MNFS_MAX_ENTRIES
 
     push es
     push cs
@@ -322,12 +337,19 @@ fs_syscall_handler:
     push cx
     push di
 
+    ; Skip deleted/empty entries
+    cmp byte [es:di], MNFS_DELETED
+    je .fb_skip
+    cmp byte [es:di], 0x00
+    je .fb_skip
+
     ; Compare only first 8 bytes (name portion, not extension)
     mov si, [cs:.fb_caller_si]
     mov cx, 8
     repe cmpsb
     je .fb_match
 
+.fb_skip:
     pop di
     pop cx
     add di, MNFS_ENTRY_SIZE
@@ -400,9 +422,7 @@ fs_syscall_handler:
     ; DS:SI already points to filename
     push di
     push bx
-    movzx cx, byte [cs:cached_count]
-    test cx, cx
-    jz .rf_not_found
+    mov cx, MNFS_MAX_ENTRIES
 
     push es
     push cs
@@ -414,10 +434,17 @@ fs_syscall_handler:
     push di
     push si                         ; Save SI for each iteration
 
+    ; Skip deleted/empty entries
+    cmp byte [es:di], MNFS_DELETED
+    je .rf_skip_entry
+    cmp byte [es:di], 0x00
+    je .rf_skip_entry
+
     mov cx, MNFS_NAME_LEN
     repe cmpsb
     je .rf_found
 
+.rf_skip_entry:
     pop si
     pop di
     pop cx
@@ -561,6 +588,616 @@ fs_syscall_handler:
     mov bx, [cs:dir_cache + MNFS_HDR_CAPACITY]
     jmp fs_iret_cf_clear
 
+; ─── FS_WRITE_FILE (AH=0x06) ─────────────────────────────────────────────────
+; Create a new file on disk (append-only allocation).
+; Input:  DS:SI = 11-byte filename (8.3, space-padded, uppercase)
+;         ES:BX = data buffer to write
+;         ECX   = file size in bytes (0 = empty directory entry only)
+;         DL    = attribute byte
+; Output: CF clear = success
+;         CF set   = error, AL = error code (FS_ERR_*)
+; ──────────────────────────────────────────────────────────────────────────────
+.fn_write_file:
+    push es
+    push di
+    push si
+    push bx
+    push dx
+
+    ; --- Save caller parameters -----------------------------------------------
+    mov [cs:.wf_caller_si], si
+    mov [cs:.wf_buf_off], bx
+    mov [cs:.wf_buf_seg], es
+    mov [cs:.wf_size_bytes], ecx
+    mov [cs:.wf_attr], dl
+
+    ; --- Validate filename (first byte must not be 0x00, 0xE5) ----------------
+    cmp byte [ds:si], 0x00
+    je .wf_err_invalid
+    cmp byte [ds:si], MNFS_DELETED
+    je .wf_err_invalid
+
+    ; --- Check if file already exists (scan all 15 entries) -------------------
+    push cs
+    pop es                          ; ES = CS for cache access
+    mov di, dir_cache + MNFS_HDR_SIZE
+    mov cx, MNFS_MAX_ENTRIES
+
+.wf_dup_check:
+    cmp byte [es:di], MNFS_DELETED
+    je .wf_dup_skip
+    cmp byte [es:di], 0x00
+    je .wf_dup_skip
+
+    ; Compare 11 bytes
+    push cx
+    push di
+    mov si, [cs:.wf_caller_si]
+    mov cx, MNFS_NAME_LEN
+    repe cmpsb
+    pop di
+    pop cx
+    je .wf_err_exists               ; Found duplicate name
+
+.wf_dup_skip:
+    add di, MNFS_ENTRY_SIZE
+    dec cx
+    jnz .wf_dup_check
+
+    ; --- Find a free directory slot (0x00 or 0xE5) ----------------------------
+    mov di, dir_cache + MNFS_HDR_SIZE
+    mov cx, MNFS_MAX_ENTRIES
+    xor bx, bx                     ; BX = 0 means "no free slot found"
+
+.wf_slot_scan:
+    cmp byte [es:di], 0x00
+    je .wf_slot_found
+    cmp byte [es:di], MNFS_DELETED
+    je .wf_slot_found
+    add di, MNFS_ENTRY_SIZE
+    dec cx
+    jnz .wf_slot_scan
+
+    ; No free slot
+    jmp .wf_err_dir_full
+
+.wf_slot_found:
+    mov [cs:.wf_slot_di], di        ; Save slot offset
+
+    ; --- Calculate sectors needed = (ECX + 511) / 512 -------------------------
+    mov eax, [cs:.wf_size_bytes]
+    add eax, 511
+    shr eax, 9                      ; EAX = sectors needed
+    mov [cs:.wf_sectors], ax
+
+    ; --- Calculate append sector (high-water mark from total_sectors header) ---
+    ; Append after all existing data: start = MNFS_DIR_SECTOR + total_sectors
+    movzx eax, word [cs:dir_cache + MNFS_HDR_TOTAL]
+    add eax, MNFS_DIR_SECTOR        ; EAX = next free partition-relative sector
+    mov [cs:.wf_start], eax
+
+    ; --- Check disk capacity --------------------------------------------------
+    movzx ebx, word [cs:dir_cache + MNFS_HDR_CAPACITY]
+    ; Used sectors = total_sectors + MNFS_DIR_SECTORS (directory itself)
+    movzx ecx, word [cs:dir_cache + MNFS_HDR_TOTAL]
+    add ecx, MNFS_DIR_SECTORS
+    movzx edx, word [cs:.wf_sectors]
+    add ecx, edx                    ; ECX = total after write
+    cmp ecx, ebx
+    ja .wf_err_disk_full
+
+    ; --- Write data sectors to disk (if any) ----------------------------------
+    cmp word [cs:.wf_sectors], 0
+    je .wf_update_dir               ; Zero-length file, skip disk write
+
+    ; Calculate absolute LBA = partition_lba + start sector
+    mov edi, [cs:.wf_start]
+    add edi, [BIB_PART_LBA]
+
+    ; Write in chunks of MNFS_WRITE_CHUNK sectors
+    mov cx, [cs:.wf_sectors]
+    mov ax, [cs:.wf_buf_seg]
+    mov [cs:.wf_dap_buf+2], ax
+    mov ax, [cs:.wf_buf_off]
+    mov [cs:.wf_dap_buf], ax
+
+.wf_write_loop:
+    ; Determine chunk size (min of remaining, MNFS_WRITE_CHUNK)
+    mov ax, cx
+    cmp ax, MNFS_WRITE_CHUNK
+    jbe .wf_chunk_ok
+    mov ax, MNFS_WRITE_CHUNK
+.wf_chunk_ok:
+    mov [cs:.wf_dap_sectors], ax
+    mov [cs:.wf_dap_lba], edi
+    mov dword [cs:.wf_dap_lba+4], 0
+
+    ; Issue INT 0x13 AH=0x43 (extended write)
+    push cx
+    push si
+    push ds
+    push cs
+    pop ds                          ; DS = CS for DAP access
+    mov si, .wf_dap
+    mov dl, [BIB_DRIVE]
+    mov ah, 0x43
+    xor al, al                      ; AL=0: no verify
+    sti
+    int 0x13
+    pop ds
+    pop si
+    pop cx
+    jc .wf_err_io
+
+    ; Advance buffer pointer and LBA
+    movzx eax, word [cs:.wf_dap_sectors]
+    sub cx, ax                      ; Remaining sectors
+    jz .wf_update_dir               ; Done writing
+
+    ; Advance LBA
+    add edi, eax
+
+    ; Advance buffer (sectors * 512 bytes)
+    shl ax, 9                       ; AX = bytes written this chunk
+    add [cs:.wf_dap_buf], ax        ; Advance buffer offset
+    ; Handle segment wrap (if buffer offset > 0xFFFF)
+    jnc .wf_write_loop
+    ; Wrapped — adjust segment
+    mov ax, [cs:.wf_dap_buf+2]
+    add ax, 0x1000                  ; Advance segment by 64K
+    mov [cs:.wf_dap_buf+2], ax
+    jmp .wf_write_loop
+
+.wf_update_dir:
+    ; --- Update directory entry in cache --------------------------------------
+    push cs
+    pop es
+    mov di, [cs:.wf_slot_di]
+
+    ; Write filename (11 bytes)
+    push ds
+    pop es                          ; Temporarily ES = DS for movsb... no wait
+    ; Actually we need to copy from DS:caller_si to CS:di
+    ; Let's do it manually
+    push cs
+    pop es                          ; ES = CS (our cache)
+    mov si, [cs:.wf_caller_si]
+    mov cx, MNFS_NAME_LEN
+.wf_copy_name:
+    mov al, [ds:si]
+    mov [es:di], al
+    inc si
+    inc di
+    dec cx
+    jnz .wf_copy_name
+
+    ; DI now at offset +11 (attributes)
+    mov al, [cs:.wf_attr]
+    mov [es:di], al                 ; Attribute
+    inc di
+
+    ; Start sector (4 bytes) at offset +12
+    mov eax, [cs:.wf_start]
+    mov [es:di], eax
+    add di, 4
+
+    ; Size in sectors (2 bytes) at offset +16
+    mov ax, [cs:.wf_sectors]
+    mov [es:di], ax
+    add di, 2
+
+    ; Size in bytes (4 bytes) at offset +18
+    mov eax, [cs:.wf_size_bytes]
+    mov [es:di], eax
+    add di, 4
+
+    ; Reserved (10 bytes) at offset +22 — zero fill
+    xor al, al
+    mov cx, 10
+.wf_zero_reserved:
+    mov [es:di], al
+    inc di
+    dec cx
+    jnz .wf_zero_reserved
+
+    ; --- Update header: file_count++, total_sectors += new sectors -------------
+    inc byte [cs:dir_cache + MNFS_HDR_COUNT]
+    inc byte [cs:cached_count]
+    mov ax, [cs:dir_cache + MNFS_HDR_TOTAL]
+    add ax, [cs:.wf_sectors]
+    mov [cs:dir_cache + MNFS_HDR_TOTAL], ax
+
+    ; --- Flush directory to disk ----------------------------------------------
+    call fs_flush_dir
+    jc .wf_err_io_post              ; Flush failed (dir mutated but disk out of sync)
+
+    ; --- Success --------------------------------------------------------------
+    pop dx
+    pop bx
+    pop si
+    pop di
+    pop es
+    jmp fs_iret_cf_clear
+
+.wf_err_invalid:
+    mov al, FS_ERR_EXISTS           ; Invalid name (reuse code 2 for simplicity)
+    jmp .wf_fail
+.wf_err_exists:
+    mov al, FS_ERR_EXISTS
+    jmp .wf_fail
+.wf_err_dir_full:
+    mov al, FS_ERR_DIR_FULL
+    jmp .wf_fail
+.wf_err_disk_full:
+    mov al, FS_ERR_DISK_FULL
+    jmp .wf_fail
+.wf_err_io:
+.wf_err_io_post:
+    mov al, FS_ERR_IO
+.wf_fail:
+    pop dx
+    pop bx
+    pop si
+    pop di
+    pop es
+    jmp fs_iret_cf_set
+
+; FS_WRITE_FILE local data
+.wf_caller_si:   dw 0
+.wf_buf_off:     dw 0
+.wf_buf_seg:     dw 0
+.wf_size_bytes:  dd 0
+.wf_attr:        db 0
+.wf_sectors:     dw 0
+.wf_start:       dd 0
+.wf_slot_di:     dw 0
+
+; Write DAP (16 bytes)
+.wf_dap:
+    db 0x10, 0                      ; Size=16, reserved=0
+.wf_dap_sectors: dw 0
+.wf_dap_buf:     dw 0, 0           ; Buffer offset, segment
+.wf_dap_lba:     dd 0, 0           ; 64-bit LBA
+
+; ─── FS_DELETE_FILE (AH=0x07) ─────────────────────────────────────────────────
+; Delete a file by marking its directory entry as a tombstone.
+; System files (ATTR_SYSTEM) cannot be deleted.
+; If the file is the physically last one, space is reclaimed.
+; Input:  DS:SI = 11-byte filename
+; Output: CF clear = success
+;         CF set   = error, AL = error code
+; ──────────────────────────────────────────────────────────────────────────────
+.fn_delete_file:
+    push es
+    push di
+    push bx
+    push cx
+
+    ; Save caller's filename
+    mov [cs:.df_caller_si], si
+
+    ; --- Find the file --------------------------------------------------------
+    push cs
+    pop es
+    mov di, dir_cache + MNFS_HDR_SIZE
+    mov cx, MNFS_MAX_ENTRIES
+
+.df_search:
+    cmp byte [es:di], MNFS_DELETED
+    je .df_skip
+    cmp byte [es:di], 0x00
+    je .df_skip
+
+    ; Compare 11 bytes
+    push cx
+    push di
+    mov si, [cs:.df_caller_si]
+    mov cx, MNFS_NAME_LEN
+    repe cmpsb
+    pop di
+    pop cx
+    je .df_found
+
+.df_skip:
+    add di, MNFS_ENTRY_SIZE
+    dec cx
+    jnz .df_search
+
+    ; Not found
+    mov al, FS_ERR_NOT_FOUND
+    jmp .df_fail
+
+.df_found:
+    ; --- Check if system file (cannot delete) ---------------------------------
+    test byte [es:di + MNFS_ENT_ATTR], MNFS_ATTR_SYSTEM
+    jnz .df_err_protected
+
+    ; --- Mark as deleted (tombstone) ------------------------------------------
+    mov byte [es:di], MNFS_DELETED
+
+    ; --- Decrement active file count ------------------------------------------
+    dec byte [cs:dir_cache + MNFS_HDR_COUNT]
+    dec byte [cs:cached_count]
+
+    ; --- Recalculate high-water mark (total_sectors) --------------------------
+    ; Scan all entries, find max(start + sectors) as the new high-water
+    call fs_recalc_total
+
+    ; --- Flush directory to disk ----------------------------------------------
+    call fs_flush_dir
+    jc .df_err_io
+
+    ; --- Success --------------------------------------------------------------
+    pop cx
+    pop bx
+    pop di
+    pop es
+    jmp fs_iret_cf_clear
+
+.df_err_protected:
+    mov al, FS_ERR_PROTECTED
+    jmp .df_fail
+.df_err_io:
+    mov al, FS_ERR_IO
+.df_fail:
+    pop cx
+    pop bx
+    pop di
+    pop es
+    jmp fs_iret_cf_set
+
+.df_caller_si: dw 0
+
+; ─── FS_RENAME_FILE (AH=0x08) ────────────────────────────────────────────────
+; Rename a file (directory entry update only, no disk data changes).
+; Input:  DS:SI = 11-byte old filename
+;         ES:DI = 11-byte new filename
+; Output: CF clear = success
+;         CF set   = error, AL = error code
+; ──────────────────────────────────────────────────────────────────────────────
+.fn_rename_file:
+    push es
+    push di
+    push bx
+    push cx
+
+    ; Save caller parameters
+    mov [cs:.rn_old_si], si
+    mov [cs:.rn_new_off], di
+    mov [cs:.rn_new_seg], es
+
+    ; --- Validate new name (first byte not 0x00, not 0xE5) --------------------
+    cmp byte [es:di], 0x00
+    je .rn_err_invalid
+    cmp byte [es:di], MNFS_DELETED
+    je .rn_err_invalid
+
+    ; --- Check new name doesn't already exist ---------------------------------
+    push cs
+    pop es
+    mov di, dir_cache + MNFS_HDR_SIZE
+    mov cx, MNFS_MAX_ENTRIES
+
+.rn_dup_check:
+    cmp byte [es:di], MNFS_DELETED
+    je .rn_dup_skip
+    cmp byte [es:di], 0x00
+    je .rn_dup_skip
+
+    ; Compare 11 bytes against new name
+    push cx
+    push di
+    push ds
+    mov ax, [cs:.rn_new_seg]
+    mov ds, ax
+    mov si, [cs:.rn_new_off]
+    mov cx, MNFS_NAME_LEN
+    repe cmpsb
+    pop ds
+    pop di
+    pop cx
+    je .rn_err_exists
+
+.rn_dup_skip:
+    add di, MNFS_ENTRY_SIZE
+    dec cx
+    jnz .rn_dup_check
+
+    ; --- Find old name --------------------------------------------------------
+    mov di, dir_cache + MNFS_HDR_SIZE
+    mov cx, MNFS_MAX_ENTRIES
+
+.rn_find_old:
+    cmp byte [es:di], MNFS_DELETED
+    je .rn_old_skip
+    cmp byte [es:di], 0x00
+    je .rn_old_skip
+
+    push cx
+    push di
+    mov si, [cs:.rn_old_si]
+    mov cx, MNFS_NAME_LEN
+    repe cmpsb
+    pop di
+    pop cx
+    je .rn_old_found
+
+.rn_old_skip:
+    add di, MNFS_ENTRY_SIZE
+    dec cx
+    jnz .rn_find_old
+
+    ; Old file not found
+    mov al, FS_ERR_NOT_FOUND
+    jmp .rn_fail
+
+.rn_old_found:
+    ; DI → matched entry in cache (ES=CS)
+    ; Copy new name (11 bytes) from caller's buffer into cache entry
+    push ds
+    mov ax, [cs:.rn_new_seg]
+    mov ds, ax
+    mov si, [cs:.rn_new_off]
+    mov cx, MNFS_NAME_LEN
+.rn_copy_name:
+    mov al, [ds:si]
+    mov [es:di], al
+    inc si
+    inc di
+    dec cx
+    jnz .rn_copy_name
+    pop ds
+
+    ; --- Flush directory to disk ----------------------------------------------
+    call fs_flush_dir
+    jc .rn_err_io
+
+    ; --- Success --------------------------------------------------------------
+    pop cx
+    pop bx
+    pop di
+    pop es
+    jmp fs_iret_cf_clear
+
+.rn_err_invalid:
+    mov al, FS_ERR_EXISTS
+    jmp .rn_fail
+.rn_err_exists:
+    mov al, FS_ERR_EXISTS
+    jmp .rn_fail
+.rn_err_io:
+    mov al, FS_ERR_IO
+.rn_fail:
+    pop cx
+    pop bx
+    pop di
+    pop es
+    jmp fs_iret_cf_set
+
+.rn_old_si:  dw 0
+.rn_new_off: dw 0
+.rn_new_seg: dw 0
+
+; =============================================================================
+; fs_flush_dir — Write the cached directory sector back to disk
+;
+; Uses INT 0x13 AH=0x43 (extended write) to write the 512-byte dir_cache
+; back to the MNFS directory sector on disk.
+;
+; Input:  none (uses dir_cache in CS)
+; Output: CF clear = success, CF set = disk error
+; Clobbers: AX (preserved otherwise)
+; =============================================================================
+fs_flush_dir:
+    push ax
+    push si
+    push dx
+    push ds
+
+    ; Set up DAP for directory write
+    mov dword [cs:.fd_dap_lba+4], 0
+    mov word [cs:.fd_dap_sectors], 1
+    ; Buffer = CS:dir_cache
+    mov ax, cs
+    mov [cs:.fd_dap_buf+2], ax
+    mov word [cs:.fd_dap_buf], dir_cache
+
+    ; LBA = partition_lba + MNFS_DIR_SECTOR
+    mov eax, [BIB_PART_LBA]
+    add eax, MNFS_DIR_SECTOR
+    mov [cs:.fd_dap_lba], eax
+
+    ; Issue INT 0x13 AH=0x43
+    push cs
+    pop ds
+    mov si, .fd_dap
+    mov dl, [BIB_DRIVE]
+    mov ah, 0x43
+    xor al, al
+    sti
+    int 0x13
+
+    pop ds
+    pop dx
+    pop si
+    pop ax
+    ret                             ; CF from INT 0x13 propagates
+
+.fd_dap:
+    db 0x10, 0                      ; Size=16, reserved
+.fd_dap_sectors: dw 0
+.fd_dap_buf:     dw 0, 0
+.fd_dap_lba:     dd 0, 0
+
+; =============================================================================
+; fs_recalc_total — Recalculate total_sectors (high-water mark)
+;
+; Scans all directory entries and finds max(start_sector + size_sectors)
+; relative to first data sector. Updates dir_cache header.
+;
+; Input:  ES = CS (cache segment)
+; Output: [dir_cache + MNFS_HDR_TOTAL] updated
+; Clobbers: AX, BX, CX, DI
+; =============================================================================
+fs_recalc_total:
+    push di
+    push cx
+
+    mov di, dir_cache + MNFS_HDR_SIZE
+    mov cx, MNFS_MAX_ENTRIES
+    xor bx, bx                     ; BX = high-water mark (in sectors from dir)
+
+.rt_loop:
+    ; Skip free/deleted entries
+    cmp byte [es:di], 0x00
+    je .rt_next
+    cmp byte [es:di], MNFS_DELETED
+    je .rt_next
+
+    ; Compute end = start_sector + size_sectors - MNFS_DIR_SECTOR
+    ; total_sectors = end_sector - MNFS_DIR_SECTOR (relative to dir start)
+    mov eax, [es:di + MNFS_ENT_START]     ; start (partition-relative)
+    movzx edx, word [es:di + MNFS_ENT_SECTORS]
+    add eax, edx                          ; EAX = end sector (partition-relative)
+    sub eax, MNFS_DIR_SECTOR              ; EAX = relative to directory
+    ; Compare with current high-water
+    cmp ax, bx
+    jbe .rt_next
+    mov bx, ax                            ; New high-water
+
+.rt_next:
+    add di, MNFS_ENTRY_SIZE
+    dec cx
+    jnz .rt_loop
+
+    ; BX = new total_sectors (could be 0 if all files deleted)
+    ; But we must include the directory sector itself in total
+    ; Actually total_sectors in header = sectors used by files + dir sector
+    ; No — looking at create-disk.ps1: total_sectors = MNFS_DIR_SECTORS + totalDataSectors
+    ; So the high-water is just end - (MNFS_DIR_SECTOR + MNFS_DIR_SECTORS) + MNFS_DIR_SECTORS
+    ; Simpler: total_sectors = (max end sector) - (MNFS_DIR_SECTOR + MNFS_DIR_SECTORS) + MNFS_DIR_SECTORS
+    ;        = (max end sector) - MNFS_DIR_SECTOR
+    ; Wait no. Let me look at the header definition:
+    ; MNFS_HDR_TOTAL = total sectors used (directory + all files)
+    ; create-disk.ps1: $totalSectors = $MNFS_DIR_SECTORS + $totalDataSectors
+    ; So total = 1 (dir) + sum of all file sectors
+    ; For high-water: total = (max_end - first_data_sector) + MNFS_DIR_SECTORS
+    ;   first_data_sector = MNFS_DIR_SECTOR + MNFS_DIR_SECTORS = 3
+    ;   total = (max_end - 3) + 1 = max_end - 2 = max_end - MNFS_DIR_SECTOR
+
+    ; BX already = max_end - MNFS_DIR_SECTOR (from above subtraction)
+    ; But we need total_sectors = MNFS_DIR_SECTORS + data_sectors_high_water
+    ; data_sectors_high_water = max_end - (MNFS_DIR_SECTOR + MNFS_DIR_SECTORS)
+    ; total_sectors = MNFS_DIR_SECTORS + max_end - MNFS_DIR_SECTOR - MNFS_DIR_SECTORS
+    ;              = max_end - MNFS_DIR_SECTOR
+    ; Which is what BX already holds! Good.
+
+    mov [cs:dir_cache + MNFS_HDR_TOTAL], bx
+
+    pop cx
+    pop di
+    ret
+
 ; =============================================================================
 ; DATA
 ; =============================================================================
@@ -630,7 +1267,7 @@ fs_dbg_rf_nf:    db '[FS] RF: not_found', 0
 ; PADDING — fill to sector boundary
 ; =============================================================================
 %ifdef DEBUG
-times (5 * 512) - ($ - $$) db 0
+times (8 * 512) - ($ - $$) db 0
 %else
-times (3 * 512) - ($ - $$) db 0
+times (5 * 512) - ($ - $$) db 0
 %endif

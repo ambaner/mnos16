@@ -13,6 +13,8 @@ from unicorn.x86_const import (
     UC_X86_REG_SS, UC_X86_REG_FLAGS,
     UC_X86_REG_AH, UC_X86_REG_AL,
     UC_X86_REG_CH, UC_X86_REG_CL,
+    UC_X86_REG_EAX, UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_EDX,
+    UC_X86_REG_EDI, UC_X86_REG_ESI,
 )
 from unicorn import UC_HOOK_CODE
 
@@ -133,7 +135,7 @@ class MiniOSEmulator:
     # --- Register access ------------------------------------------------------
 
     def reg(self, name: str) -> int:
-        """Read a register by name (e.g., 'ax', 'si', 'flags')."""
+        """Read a register by name (e.g., 'ax', 'si', 'flags', 'eax')."""
         reg_map = {
             "ax": UC_X86_REG_AX, "bx": UC_X86_REG_BX,
             "cx": UC_X86_REG_CX, "dx": UC_X86_REG_DX,
@@ -144,6 +146,9 @@ class MiniOSEmulator:
             "es": UC_X86_REG_ES, "ss": UC_X86_REG_SS,
             "ah": UC_X86_REG_AH, "al": UC_X86_REG_AL,
             "ch": UC_X86_REG_CH, "cl": UC_X86_REG_CL,
+            "eax": UC_X86_REG_EAX, "ebx": UC_X86_REG_EBX,
+            "ecx": UC_X86_REG_ECX, "edx": UC_X86_REG_EDX,
+            "edi": UC_X86_REG_EDI, "esi": UC_X86_REG_ESI,
         }
         key = name.lower()
         if key not in reg_map:
@@ -159,11 +164,18 @@ class MiniOSEmulator:
             "sp": UC_X86_REG_SP, "bp": UC_X86_REG_BP,
             "cs": UC_X86_REG_CS, "ds": UC_X86_REG_DS,
             "es": UC_X86_REG_ES, "ss": UC_X86_REG_SS,
+            "eax": UC_X86_REG_EAX, "ebx": UC_X86_REG_EBX,
+            "ecx": UC_X86_REG_ECX, "edx": UC_X86_REG_EDX,
+            "edi": UC_X86_REG_EDI, "esi": UC_X86_REG_ESI,
         }
         key = name.lower()
         if key not in reg_map:
             raise ValueError(f"Unknown register: {name}")
-        self.uc.reg_write(reg_map[key], val & 0xFFFF)
+        # 32-bit regs get full value; 16-bit get masked
+        if key.startswith('e'):
+            self.uc.reg_write(reg_map[key], val & 0xFFFFFFFF)
+        else:
+            self.uc.reg_write(reg_map[key], val & 0xFFFF)
 
     # --- Flags helpers --------------------------------------------------------
 

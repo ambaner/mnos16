@@ -57,5 +57,22 @@ FS_FIND_FILE      equ 0x02           ; DS:SI=name → EAX=start, CX=sectors
 FS_READ_FILE      equ 0x03           ; DS:SI=name, ES:BX=buf, CX=max → CX=read
 FS_GET_INFO       equ 0x04           ; → AL=ver, CL=count, CH=max, DX=total
 FS_FIND_BASE      equ 0x05           ; DS:SI=8-byte name → EAX=start, CX=sectors
+FS_WRITE_FILE     equ 0x06           ; DS:SI=name, ES:BX=buf, ECX=bytes, DL=attr
+FS_DELETE_FILE    equ 0x07           ; DS:SI=name → CF=error
+FS_RENAME_FILE    equ 0x08           ; DS:SI=old name, ES:DI=new name
 
-FS_SYSCALL_MAX    equ 0x05           ; Highest valid FS syscall number
+FS_SYSCALL_MAX    equ 0x08           ; Highest valid FS syscall number
+
+; --- Filesystem error codes (returned in AL when CF is set) ------------------
+FS_ERR_NOT_FOUND  equ 0x01           ; File not found
+FS_ERR_EXISTS     equ 0x02           ; File already exists (write/rename)
+FS_ERR_DIR_FULL   equ 0x03           ; Directory full (15 entries)
+FS_ERR_DISK_FULL  equ 0x04           ; Insufficient disk space
+FS_ERR_IO         equ 0x05           ; Disk I/O error
+FS_ERR_PROTECTED  equ 0x06           ; Cannot modify system file
+
+; --- Deleted entry marker ----------------------------------------------------
+MNFS_DELETED      equ 0xE5           ; First byte of name = entry deleted
+
+; --- Write operation constants -----------------------------------------------
+MNFS_WRITE_CHUNK  equ 16             ; Max sectors per INT 0x13 write (DMA safe)

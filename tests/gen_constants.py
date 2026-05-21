@@ -23,6 +23,7 @@ OUTPUT = REPO_ROOT / "tests" / "harness" / "constants.py"
 INC_FILES = [
     INC_DIR / "memory.inc",
     INC_DIR / "syscalls.inc",
+    INC_DIR / "mnfs.inc",
 ]
 
 # Regex for NASM equ definitions: NAME equ VALUE [; comment]

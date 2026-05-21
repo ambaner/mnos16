@@ -7,19 +7,21 @@ architecture. The project is educational — designed so anyone can clone the re
 build a bootable disk image, and run it in a Hyper-V virtual machine with no prior
 OS-development experience.
 
-The current milestone is **M11: Unit Test Framework** — the MBR chain-loads a
+The current milestone is **M12: MNFS Write Support** — the MBR chain-loads a
 minimal VBR, which finds and loads LOADER.SYS from the MNFS directory, LOADER
 enables A20 and presents a boot menu, the kernel installs INT 0x80 syscalls,
-loads FS.SYS (filesystem module with INT 0x81 API), loads MM.SYS (heap
-allocator with INT 0x82 API), and finally loads the interactive shell
-(SHELL.SYS) — all file locations discovered via directory lookup, no hardcoded
-disk offsets.  The shell can load and execute user programs (`.MNX` files) from
-disk into a 30 KB Transient Program Area, with structured argc/argv parsing
-for command-line arguments.  A Python + Unicorn Engine test framework provides
-37 unit tests with coverage reporting.  Debug builds add serial logging,
-syscall tracing, user-mode debug syscalls, assertion macros, INT depth tracking,
-DAP hex dumps, and CPU fault handlers.  Fault handlers are present in both
-release and debug builds (PIC remapped to avoid IRQ/exception vector conflicts).
+loads FS.SYS (filesystem module with INT 0x81 API supporting read and write),
+loads MM.SYS (heap allocator with INT 0x82 API), and finally loads the
+interactive shell (SHELL.SYS) — all file locations discovered via directory
+lookup, no hardcoded disk offsets.  The shell can load and execute user
+programs (`.MNX` files) from disk into a 30 KB Transient Program Area, with
+structured argc/argv parsing for command-line arguments.  The filesystem
+supports runtime file creation, deletion (tombstone-based), and renaming.
+A Python + Unicorn Engine test framework provides 90 unit tests with coverage
+reporting.  Debug builds add serial logging, syscall tracing, user-mode debug
+syscalls, assertion macros, INT depth tracking, DAP hex dumps, and CPU fault
+handlers.  Fault handlers are present in both release and debug builds (PIC
+remapped to avoid IRQ/exception vector conflicts).
 
 ### Design Principles
 
@@ -262,7 +264,9 @@ via MNFS directory lookup:
 ### 2.7 FS.SYS
 
 The filesystem module (`src/fs/fs.asm`) is loaded by the kernel to 0x0800.
-It owns the INT 0x81 filesystem syscall interface.  Header:
+It owns the INT 0x81 filesystem syscall interface and provides both read and
+write operations.  Write support uses tombstone-based deletion (name[0]=0xE5)
+and contiguous allocation with high-water-mark tracking.  Header:
 
 ```
 FS Header:
@@ -270,6 +274,10 @@ FS Header:
   Offset 4:   dw N      FS module size in sectors
   Offset 6:   jmp init  Entry point for initialization
 ```
+
+INT 0x81 functions: FS_LIST_FILES (0x01), FS_FIND_FILE (0x02),
+FS_READ_FILE (0x03), FS_GET_INFO (0x04), FS_WRITE_FILE (0x06),
+FS_DELETE_FILE (0x07), FS_RENAME_FILE (0x08).
 
 > **📄 Full specification**: See [FILESYSTEM.md](FILESYSTEM.md) for the complete
 > MNFS format, directory structure, INT 0x81 API, and design rationale.

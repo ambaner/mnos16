@@ -22,6 +22,10 @@
 ;   ver      - Show version and build info
 ;   help     - List available commands
 ;   cls      - Clear the screen
+;   dir      - List files on disk
+;   copy     - Copy a file
+;   del      - Delete a file
+;   ren      - Rename a file
 ;   reboot   - Warm-reboot the system
 ;
 ; Assembled with:  nasm -f bin -o shell.sys src/shell/shell.asm
@@ -39,7 +43,7 @@
 ; SHELL HEADER
 ; =============================================================================
 shell_magic     db 'MNEX'           ; Magic identifier — user-mode executable
-shell_sectors   dw 16               ; Shell size in sectors (updated as needed)
+shell_sectors   dw 18               ; Shell size in sectors (updated as needed)
 
 ; =============================================================================
 ; SHELL INIT
@@ -130,12 +134,31 @@ shell_prompt:
     call strcmp
     je cmd_dir
 
+    ; "del"
+    mov si, cmd_buf
+    mov di, str_del
+    call cmdmatch
+    je cmd_del
+
+    ; "ren"
+    mov si, cmd_buf
+    mov di, str_ren
+    call cmdmatch
+    je cmd_ren
+
+    ; "copy"
+    mov si, cmd_buf
+    mov di, str_copy
+    call cmdmatch
+    je cmd_copy
+
     ; Unknown command — try to execute it as a program
     jmp cmd_run_implicit
 
 
 %include "shell_cmd_simple.inc"
 %include "shell_cmd_dir.inc"
+%include "shell_cmd_fs.inc"
 %include "shell_cmd_run.inc"
 %include "shell_parse_args.inc"
 %include "shell_cmd_mem.inc"
@@ -148,4 +171,4 @@ shell_prompt:
 ; =============================================================================
 ; PADDING — fill to sector boundary (16 sectors = 8192 bytes)
 ; =============================================================================
-times (16 * 512) - ($ - $$) db 0
+times (18 * 512) - ($ - $$) db 0

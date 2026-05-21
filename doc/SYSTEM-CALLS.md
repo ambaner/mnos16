@@ -1066,6 +1066,15 @@ structured argc/argv access to command-line arguments parsed by the shell.
 | 0x25 | `SYS_GET_ARGC` | Get argument count | CL = argc from [ARGV_ARGC] | — |
 | 0x26 | `SYS_GET_ARGV` | Get argument by index | CL=index → SI=string, CX=len; CF if bad | — |
 
+**Filesystem write syscalls (INT 0x81, AH=0x06–0x08):** Implemented in v0.9.11.
+These extend the filesystem module with write support — creating, deleting, and
+renaming files at runtime.  All use `syscall_ret_cf` for CF propagation.  Error
+codes returned in AL when CF=1 (see `doc/FILESYSTEM.md` §8.9).
+
+| 0x06 | `FS_WRITE_FILE` | Write/create file | DS:SI=name, ES:BX=data, ECX=size; CF+AL on error | INT 0x81 |
+| 0x07 | `FS_DELETE_FILE` | Delete file (tombstone) | DS:SI=name; CF+AL on error | INT 0x81 |
+| 0x08 | `FS_RENAME_FILE` | Rename file | DS:SI=old, ES:DI=new; CF+AL on error | INT 0x81 |
+
 ### 7.3 Stability Guarantee
 
 Following the Linux model (not Windows), **syscall numbers are a stable ABI**.

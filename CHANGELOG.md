@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.9.11] - 2026-05-19
+
+### Added
+- **MNFS write support** — three new filesystem syscalls via INT 0x81:
+  - `FS_WRITE_FILE` (AH=0x06): Write/create a file (DS:SI=name, ES:BX=data,
+    ECX=size). Returns CF=0 success or CF=1 + AL=error code.
+  - `FS_DELETE_FILE` (AH=0x07): Delete a file by name (tombstone-based,
+    name[0]=0xE5). System files protected (FS_ERR_PROTECTED).
+  - `FS_RENAME_FILE` (AH=0x08): Rename a file (DS:SI=old, ES:DI=new).
+    Fails if destination already exists.
+- **Error code system** — structured error reporting for write operations:
+  FS_ERR_NOT_FOUND (1), FS_ERR_EXISTS (2), FS_ERR_DIR_FULL (3),
+  FS_ERR_DISK_FULL (4), FS_ERR_IO (5), FS_ERR_PROTECTED (6)
+- **Shell `copy` command** — copy a file (`copy SRC.EXT DST.EXT`); reads
+  source into TPA buffer, writes with new name; clears system attribute on copy
+- **Shell `del` command** — delete files from the command line
+  (`del FILENAME.EXT`)
+- **Shell `ren` command** — rename files from the command line
+  (`ren OLD.EXT NEW.EXT`)
+- **`cmdmatch` routine** — prefix-based command dispatcher for commands with
+  arguments (matches command name followed by space or NUL)
+- **Unit tests** — 38 new tests: 26 in `test_fs_write.py` (write/delete/rename,
+  95% branch coverage), 12 in `test_cmdmatch.py` (100% branch coverage)
+
+### Changed
+- `FS.SYS` binary size: release 3→5 sectors, debug 5→8 sectors (write support)
+- `SHELL.SYS` binary size: 16→18 sectors (copy + del + ren commands)
+- `dir` command updated to skip tombstoned entries (name[0]=0xE5)
+- `total_sectors` in directory header recalculated as high-water mark after
+  delete (does not shrink to fill gaps)
+- Emulator harness extended with 32-bit register support (eax/ebx/ecx/edx/esi/edi)
+- Total unit tests: 64→102
+
+---
+
 ## [0.9.10] - 2026-05-18
 
 ### Added

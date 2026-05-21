@@ -84,8 +84,8 @@ Address       Size      Contents                 Lifetime
                 max)                                overwrites with FS.SYS ↓
 
                          FS.SYS (runtime)          Permanent after kernel
-                         (2 sectors = 1 KB used,   init.  Installs INT 0x81
-                          7 KB growth room)         filesystem handler, caches
+                         (5 sectors = 2.5 KB used, init.  Installs INT 0x81
+                          5.5 KB growth room)       filesystem handler, caches
                                                     MNFS directory (512 B)
 
 0x0000:0x2800  2048 B   MM.SYS                    Permanent (OS runtime)
@@ -94,7 +94,7 @@ Address       Size      Contents                 Lifetime
                                                     manages heap at 0x8000
 
 0x0000:0x3000  8192 B   SHELL.SYS                 Permanent (OS runtime)
-               (8 KB     (16 sectors = 8 KB used)   Loaded by KERNEL, runs
+               (8 KB     (18 sectors = 9 KB used)  Loaded by KERNEL, runs
                 max)                                 as user-mode executable
                                                     via INT 0x80 syscalls
 
@@ -166,10 +166,12 @@ This memory region serves a dual purpose:
    overwriting the now-dead loader.  FS.SYS installs the INT 0x81 filesystem
    handler and caches the MNFS directory table in a 512-byte buffer.
 
-**Contents** (v0.6.0): INT 0x81 dispatcher with 4 functions (list, find, read,
-get_info), 512-byte directory cache, initialization routine.
+**Contents** (v0.9.11): INT 0x81 dispatcher with 7 functions (list, find, read,
+get_info, write, delete, rename), 512-byte directory cache, initialization
+routine, tombstone-based deletion (name[0]=0xE5), contiguous sector allocation
+with high-water-mark tracking.
 
-**Current size**: 2 sectors (1024 bytes).  **Maximum**: 16 sectors (8192 bytes)
+**Current size**: 5 sectors (2560 bytes).  **Maximum**: 16 sectors (8192 bytes)
 ending at 0x27FF.
 
 **Lifetime**: Permanent after kernel init — FS.SYS must remain resident because
@@ -200,7 +202,7 @@ The kernel loads SHELL.SYS to linear address 0x3000 (segment 0x0000, offset
 help, cls, reboot), thin syscall wrappers (hardware via INT 0x80, filesystem via
 INT 0x81), strcmp, readline, string constants, and runtime data buffers.
 
-**Current size**: 12 sectors (6144 bytes), ending at 0x47FF.  **Maximum**:
+**Current size**: 18 sectors (9216 bytes), ending at 0x47FF.  **Maximum**:
 16 sectors (8192 bytes), ending at 0x4FFF.  The kernel at 0x5000 sets the
 upper boundary.
 

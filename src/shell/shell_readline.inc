@@ -114,6 +114,47 @@ strcmp:
     ret
 
 ; ---------------------------------------------------------------------------
+; cmdmatch — Check if cmd_buf starts with command name DI and is followed by
+;            a space or NUL.
+;   Input:  DS:SI -> cmd_buf, DS:DI -> command string (NUL-terminated)
+;   Output: ZF set if command matches (SI left past matched word + space)
+; ---------------------------------------------------------------------------
+cmdmatch:
+    push si
+    push di
+.cm_loop:
+    mov al, [di]
+    test al, al
+    jz .cm_end_cmd              ; Reached end of command string
+    cmp al, [si]
+    jne .cm_ne
+    inc si
+    inc di
+    jmp .cm_loop
+
+.cm_end_cmd:
+    ; Command string ended — cmd_buf must have space or NUL here
+    mov al, [si]
+    cmp al, ' '
+    je .cm_ok
+    test al, al
+    je .cm_ok
+    ; cmd_buf has more non-space chars — not a match (e.g., "delete" vs "del")
+    jmp .cm_ne
+
+.cm_ok:
+    pop di
+    pop si
+    xor al, al                      ; Set ZF (match)
+    ret
+
+.cm_ne:
+    pop di
+    pop si
+    or al, 1                        ; Clear ZF (no match)
+    ret
+
+; ---------------------------------------------------------------------------
 ; rjust_dec16 — Print DX as unsigned decimal, right-justified in CL-wide field
 ;
 ; Input:  DX = value to print, CL = minimum field width

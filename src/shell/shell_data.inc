@@ -17,6 +17,9 @@ msg_help_text   db 'Available commands:', 13, 10
                 db '  sysinfo  - Display system information (5 pages)', 13, 10
                 db '  mem      - Detailed memory info and layout', 13, 10
                 db '  dir      - List files on disk (MNFS)', 13, 10
+                db '  copy     - Copy a file (copy SRC.EXT DST.EXT)', 13, 10
+                db '  del      - Delete a file (del FILENAME.EXT)', 13, 10
+                db '  ren      - Rename a file (ren OLD.EXT NEW.EXT)', 13, 10
                 db '  run      - Run a program (run FILENAME.MNX)', 13, 10
                 db '  ver      - Show version and build info', 13, 10
                 db '  help     - Show this help message', 13, 10
@@ -31,6 +34,9 @@ str_ver         db 'ver', 0
 str_cls         db 'cls', 0
 str_reboot      db 'reboot', 0
 str_dir         db 'dir', 0
+str_del         db 'del', 0
+str_ren         db 'ren', 0
+str_copy        db 'copy', 0
 
 ; --- ver command strings -----------------------------------------------------
 msg_ver_line1   db '  MNOS ', OS_VERSION_STR, ' ', 0     ; Tag appended at runtime
@@ -38,8 +44,8 @@ msg_ver_rest    db '  Arch:      x86 real mode (16-bit)', 13, 10
                 db '  Assembler: NASM', 13, 10
                 db '  Platform:  Hyper-V Gen 1', 13, 10
                 db '  Boot:      MBR -> VBR -> LOADER -> KERNEL -> SHELL', 13, 10
-                db '  Filesystem: MNFS v1 (flat, INT 0x81)', 13, 10
-                db '  Memory:    INT 0x82 heap (4 KB) + TPA (26 KB)', 13, 10
+                db '  Filesystem: MNFS v1 (read/write, INT 0x81)', 13, 10
+                db '  Memory:    HMA heap (64 KB) + TPA (30 KB)', 13, 10
                 db '  Disk:      16 MB fixed VHD', 13, 10
                 db '  Source:    github.com/ambaner/mini-os', 13, 10, 0
 
@@ -284,4 +290,31 @@ run_file_sectors dw 0               ; File size in sectors (from FS_FIND_FILE)
 run_args_ptr    dw 0                ; Pointer to argument string in cmd_buf
 run_ext_provided db 0               ; 1 if user typed a dot+extension, 0 if not
 run_empty_args  db 0                ; Empty NUL string for no-args case
+
+; --- del/ren command strings --------------------------------------------------
+msg_del_ok      db 'File deleted.', 13, 10, 0
+msg_del_not_found db 'File not found.', 13, 10, 0
+msg_del_protected db 'Cannot delete system file.', 13, 10, 0
+msg_del_io_err  db 'Delete failed (I/O error).', 13, 10, 0
+msg_del_usage   db 'Usage: del FILENAME.EXT', 13, 10, 0
+
+msg_ren_ok      db 'File renamed.', 13, 10, 0
+msg_ren_not_found db 'Source file not found.', 13, 10, 0
+msg_ren_exists  db 'Target name already exists.', 13, 10, 0
+msg_ren_io_err  db 'Rename failed (I/O error).', 13, 10, 0
+msg_ren_usage   db 'Usage: ren OLDNAME.EXT NEWNAME.EXT', 13, 10, 0
+
+; --- ren command data ---------------------------------------------------------
+ren_old_buf     times 11 db 0       ; Old filename buffer for rename
+
+; --- copy command strings -----------------------------------------------------
+msg_cp_ok       db '1 file(s) copied.', 13, 10, 0
+msg_cp_not_found db 'Source file not found.', 13, 10, 0
+msg_cp_too_large db 'Source file too large (30 KB max).', 13, 10, 0
+msg_cp_read_err db 'Read error.', 13, 10, 0
+msg_cp_exists   db 'Destination already exists.', 13, 10, 0
+msg_cp_dir_full db 'Directory full (15 files max).', 13, 10, 0
+msg_cp_disk_full db 'Disk full.', 13, 10, 0
+msg_cp_io_err   db 'Write error.', 13, 10, 0
+msg_cp_usage    db 'Usage: copy SOURCE.EXT DEST.EXT', 13, 10, 0
 

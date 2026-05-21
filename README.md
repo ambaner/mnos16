@@ -1,7 +1,7 @@
 # mini-os
 
 A minimalistic operating system built from scratch in x86 assembly — currently
-at **v0.9.9**.Features a multi-stage boot loader, a microkernel-style
+at **v0.9.11**.Features a multi-stage boot loader, a microkernel-style
 architecture with separate modules for filesystem and memory management, and an
 interactive shell that can load and run user programs.  Targets Hyper-V Gen 1
 VMs with a unified VHD containing both Release and Debug configurations.
@@ -89,7 +89,7 @@ VHD — no need to rebuild or swap images.
 After the boot chain completes, you'll see the shell:
 
 ```
-  MNOS v0.9.8 [Release]
+  MNOS v0.9.11 [Release]
 
 mnos:\>
 ```
@@ -101,6 +101,9 @@ Type `help` for a list of commands:
 | `sysinfo` | 5 pages of hardware info (CPU/CPUID, memory/E820, BDA, video/disk/EDD, IVT) |
 | `mem` | Memory diagnostics — conventional/extended RAM, A20 gate, layout, E820 map |
 | `dir` | List files on disk (name, type, sectors, bytes) |
+| `copy` | Copy a file (`copy SRC.EXT DST.EXT`) |
+| `del` | Delete a file (`del FILENAME.EXT`) |
+| `ren` | Rename a file (`ren OLD.EXT NEW.EXT`) |
 | `ver` | Version, architecture, platform, and build info |
 | `help` | List available commands |
 | `cls` | Clear screen |
@@ -172,11 +175,12 @@ mini-os/
 │       ├── shell.asm          # Shell entry point — init, command loop, dispatch
 │       ├── shell_cmd_simple.inc   # Simple commands (ver, help, cls, reboot)
 │       ├── shell_cmd_dir.inc      # dir command (MNFS directory listing)
+│       ├── shell_cmd_fs.inc       # File commands (copy, del, ren)
 │       ├── shell_cmd_mem.inc      # mem command (memory diagnostics)
 │       ├── shell_cmd_run.inc      # Implicit program execution (loader + validation)
 │       ├── shell_cmd_sysinfo.inc  # sysinfo command (5-page hardware info)
 │       ├── shell_parse_args.inc   # Argument tokenizer (Layer 2: argc/argv)
-│       ├── shell_readline.inc     # Input handling + utility subroutines
+│       ├── shell_readline.inc     # Input handling + utility subroutines (strcmp, cmdmatch)
 │       └── shell_data.inc         # String constants + runtime data buffers
 ├── tools/
 │   ├── build.ps1              # Build logic — assembles all binaries, creates VHD
@@ -191,16 +195,16 @@ mini-os/
 │       ├── mbr.bin            # MBR binary
 │       ├── vbr.bin            # VBR binary (2 sectors)
 │       ├── loader.sys         # LOADER (3 sectors, shared)
-│       ├── fs.sys             # FS — release (3 sectors)
+│       ├── fs.sys             # FS — release (5 sectors)
 │       ├── kernel.sys         # KERNEL — release (8 sectors)
-│       ├── shell.sys          # SHELL — release (16 sectors)
-│       ├── mm.sys             # MM — release (1 sector)
+│       ├── shell.sys          # SHELL — release (18 sectors)
+│       ├── mm.sys             # MM — release (2 sectors)
 │       ├── hello.mnx          # HELLO — user program (1 sector)
-│       ├── mnmon.mnx          # MNMON — machine monitor (4 sectors)
-│       ├── fsd.sys            # FS — debug (5 sectors)
+│       ├── mnmon.mnx          # MNMON — machine monitor (5 sectors)
+│       ├── fsd.sys            # FS — debug (8 sectors)
 │       ├── kerneld.sys        # KERNEL — debug (14 sectors)
-│       ├── shelld.sys         # SHELL — debug (16 sectors)
-│       ├── mmd.sys            # MM — debug (2 sectors)
+│       ├── shelld.sys         # SHELL — debug (18 sectors)
+│       ├── mmd.sys            # MM — debug (3 sectors)
 │       ├── mini-os.img        # 16 MB raw disk image
 │       └── mini-os.vhd        # Bootable VHD (single unified image)
 ├── build.bat                  # Build entry point
@@ -208,16 +212,23 @@ mini-os/
 ├── setup-vm.bat               # Hyper-V VM setup entry point
 ├── tests/                     # Unit test suite (Python + Unicorn Engine)
 │   ├── conftest.py            # pytest fixtures & coverage registration
+│   ├── gen_constants.py       # Auto-generates constants.py from .inc files
 │   ├── requirements.txt       # Python deps (unicorn, pytest, pytest-html)
 │   ├── harness/
 │   │   ├── assembler.py       # NASM stub assembly helper
-│   │   ├── constants.py       # Memory addresses mirroring memory.inc
+│   │   ├── constants.py       # Auto-generated from memory.inc + syscalls.inc + mnfs.inc
 │   │   ├── coverage.py        # Coverage collector & HTML/JSON reporter
 │   │   └── emulator.py        # MiniOSEmulator (Unicorn wrapper)
 │   ├── stubs/                 # Minimal NASM harnesses for routines under test
+│   │   ├── stub_cmdmatch.asm
+│   │   ├── stub_fs_write.asm
+│   │   ├── stub_mm.asm
 │   │   ├── stub_parse_args.asm
 │   │   ├── stub_parse_fname.asm
 │   │   └── stub_strcmp.asm
+│   ├── test_cmdmatch.py       # 12 tests for cmdmatch (command prefix matching)
+│   ├── test_fs_write.py       # 26 tests for FS write/delete/rename
+│   ├── test_mm.py             # 29 tests for memory manager
 │   ├── test_parse_args.py     # 15 tests for shell_parse_args
 │   ├── test_parse_filename.py # 9 tests for run_parse_filename
 │   └── test_strcmp.py          # 11 tests for strcmp
@@ -244,8 +255,9 @@ python -m pytest tests/ -v
 python -m pytest tests/ -v    # coverage is auto-generated on session finish
 ```
 
-**64 tests** across 4 modules: `shell_parse_args` (15), `run_parse_filename` (9),
-`strcmp` (13), `mm_allocator` (27). Tests run automatically in CI via GitHub Actions.
+**102 tests** across 6 modules: `shell_parse_args` (15), `run_parse_filename` (9),
+`strcmp` (11), `mm_allocator` (29), `fs_write` (26), `cmdmatch` (12).
+Tests run automatically in CI via GitHub Actions.
 
 **Coverage metrics:**
 - **Statement coverage** — % of binary addresses executed by tests
@@ -334,6 +346,7 @@ Each version is a tagged release you can checkout to see the project at that sta
 | `v0.9.8` | **Parsed Arguments (argc/argv)** | Layer 2 command-line parsing; SYS_GET_ARGC/SYS_GET_ARGV syscalls; double-quote support; max 15 args; doc/COMMAND-LINE.md |
 | `v0.9.9` | **Unit Test Framework** | Python + Unicorn Engine test harness; 64 tests across 4 modules; statement + branch coverage with Capstone; historical trend tracking (Chart.js); CI/CD test job; doc/TESTING.md |
 | `v0.9.10` | **HMA Heap + TPA Expansion** | Dynamic memory moved to HMA (~64 KB); TPA expanded 26→30 KB; auto-generated test constants; shell/MNMON HMA-aware |
+| `v0.9.11` | **MNFS Write Support** | FS write/delete/rename syscalls (INT 0x81 AH=0x06–0x08); tombstone deletion; shell `copy`, `del`, `ren` commands; `cmdmatch` prefix dispatcher; 102 unit tests (95% branch on FS); FS.SYS 3→5 sectors; SHELL.SYS 16→18 sectors |
 
 ```cmd
 git checkout v0.1.0      # see the project at any prior milestone
