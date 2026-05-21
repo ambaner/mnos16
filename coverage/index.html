@@ -25,17 +25,31 @@
     <div class="overall">
         <div class="metrics">
             <div class="metric">
-                <strong>Statement:</strong> <code>████░░░░░░</code> <strong>44%</strong>
-                (294/670 addresses)
+                <strong>Statement:</strong> <code>███░░░░░░░</code> <strong>30%</strong>
+                (662/2173 addresses)
             </div>
             <div class="metric">
-                <strong>Branch:</strong> <code>████████░░</code> <strong>87%</strong>
-                (87/100 outcomes)
+                <strong>Branch:</strong> <code>█████████░</code> <strong>91%</strong>
+                (167/184 outcomes)
             </div>
         </div>
     </div>
     <table>
         <tr><th>Routine</th><th>Total Addrs</th><th>Hit</th><th>Statement</th><th>Branch</th></tr>
+        <tr>
+            <td>cmdmatch</td>
+            <td>42</td>
+            <td>26</td>
+            <td><code>██████░░░░</code> 62%</td>
+            <td><code>██████████</code> 100% (4/4)</td>
+        </tr>
+        <tr>
+            <td>fs_write</td>
+            <td>1461</td>
+            <td>342</td>
+            <td><code>██░░░░░░░░</code> 23%</td>
+            <td><code>█████████░</code> 95% (34/38)</td>
+        </tr>
         <tr>
             <td>mm_allocator</td>
             <td>363</td>
@@ -67,7 +81,7 @@
 
     </table>
     <p class="footer">
-        Generated 2026-05-18 22:30 UTC
+        Generated 2026-05-21 17:20 UTC
         · <a href="trend.html">Coverage Trend →</a>
         · Tier 1 only (pure-logic unit tests via Unicorn Engine)
         · See <a href="https://github.com/AmbaneP/mini-os/blob/main/doc/TESTING.md">TESTING.md</a>
