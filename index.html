@@ -1,286 +1,551 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>mini-os — A Minimalistic Operating System</title>
+    <
+meta charset="UTF-8">
+    <meta name="viewpor
+t" content="width=device-width, initial-scale
+=1.0">
+    <title>MNOS16 — A Minimalistic Operating System</title>
     <style>
-        :root {
+        
+:root {
             --primary: #0f172a;
-            --accent: #3b82f6;
-            --accent-hover: #2563eb;
-            --surface: #ffffff;
+     
+       --accent: #3b82f6;
+            --accen
+t-hover: #2563eb;
+            --surface: #fff
+fff;
             --surface-alt: #f8fafc;
-            --border: #e2e8f0;
-            --text: #1e293b;
+    
+        --border: #e2e8f0;
+            --text
+: #1e293b;
             --text-muted: #64748b;
+
             --radius: 12px;
         }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+      
+  * { margin: 0; padding: 0; box-sizing: bord
+er-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            color: var(--text);
-            background: var(--surface-alt);
+            font-fam
+ily: -apple-system, BlinkMacSystemFont, 'Sego
+e UI', Roboto, sans-serif;
+            color:
+ var(--text);
+            background: var(--s
+urface-alt);
             line-height: 1.6;
-        }
+  
+      }
         .hero {
-            background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
+            backgroun
+d: linear-gradient(135deg, #0f172a 0%, #1e3a5
+f 100%);
             color: white;
-            padding: 4rem 2rem;
-            text-align: center;
+          
+  padding: 4rem 2rem;
+            text-align:
+ center;
         }
         .hero h1 {
-            font-size: 3rem;
-            font-weight: 700;
+       
+     font-size: 3rem;
+            font-weight
+: 700;
             margin-bottom: 0.5rem;
-            letter-spacing: -0.02em;
+   
+         letter-spacing: -0.02em;
         }
-        .hero p {
-            font-size: 1.25rem;
+ 
+       .hero p {
+            font-size: 1.25r
+em;
             opacity: 0.85;
-            max-width: 600px;
-            margin: 0 auto 1.5rem;
+            ma
+x-width: 600px;
+            margin: 0 auto 1.
+5rem;
         }
         .hero .badges {
-            display: flex;
-            gap: 0.75rem;
+     
+       display: flex;
+            gap: 0.75re
+m;
             justify-content: center;
-            flex-wrap: wrap;
+     
+       flex-wrap: wrap;
         }
-        .badge {
+        .ba
+dge {
             display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            background: rgba(255,255,255,0.1);
-            border: 1px solid rgba(255,255,255,0.2);
-            padding: 0.35rem 0.75rem;
+     
+       align-items: center;
+            gap: 
+0.4rem;
+            background: rgba(255,255,
+255,0.1);
+            border: 1px solid rgba(
+255,255,255,0.2);
+            padding: 0.35re
+m 0.75rem;
             border-radius: 999px;
+
             font-size: 0.85rem;
-            color: rgba(255,255,255,0.9);
+            c
+olor: rgba(255,255,255,0.9);
         }
-        .container {
+      
+  .container {
             max-width: 1100px;
+
             margin: 0 auto;
-            padding: 3rem 1.5rem;
+            padd
+ing: 3rem 1.5rem;
         }
         .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+ 
+           display: grid;
+            grid-te
+mplate-columns: repeat(auto-fit, minmax(320px
+, 1fr));
             gap: 1.5rem;
-            margin-top: 2rem;
+           
+ margin-top: 2rem;
         }
         .card {
+
             background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 1.75rem;
-            transition: box-shadow 0.2s;
+     
+       border: 1px solid var(--border);
+     
+       border-radius: var(--radius);
+        
+    padding: 1.75rem;
+            transition:
+ box-shadow 0.2s;
         }
-        .card:hover {
-            box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+        .card:hov
+er {
+            box-shadow: 0 4px 24px rgba(
+0,0,0,0.06);
         }
         .card h3 {
-            font-size: 1.1rem;
-            margin-bottom: 0.75rem;
+   
+         font-size: 1.1rem;
+            margi
+n-bottom: 0.75rem;
             display: flex;
+
             align-items: center;
-            gap: 0.5rem;
+           
+ gap: 0.5rem;
         }
         .card-icon {
+
             width: 32px;
-            height: 32px;
+            height: 
+32px;
             border-radius: 8px;
-            display: flex;
-            align-items: center;
+       
+     display: flex;
+            align-items: 
+center;
             justify-content: center;
+
             font-size: 1rem;
-            flex-shrink: 0;
+            flex
+-shrink: 0;
         }
-        .icon-docs { background: #dbeafe; color: #2563eb; }
-        .icon-download { background: #dcfce7; color: #16a34a; }
-        .icon-test { background: #fef3c7; color: #d97706; }
-        .icon-source { background: #f3e8ff; color: #9333ea; }
-        .card ul {
-            list-style: none;
+        .icon-docs { ba
+ckground: #dbeafe; color: #2563eb; }
+        
+.icon-download { background: #dcfce7; color: 
+#16a34a; }
+        .icon-test { background: #
+fef3c7; color: #d97706; }
+        .icon-sourc
+e { background: #f3e8ff; color: #9333ea; }
+  
+      .card ul {
+            list-style: none
+;
             padding: 0;
         }
-        .card li {
+        .
+card li {
             padding: 0.4rem 0;
-            border-bottom: 1px solid var(--border);
+    
+        border-bottom: 1px solid var(--border
+);
         }
-        .card li:last-child { border-bottom: none; }
+        .card li:last-child { bo
+rder-bottom: none; }
         .card a {
-            color: var(--accent);
-            text-decoration: none;
-            font-weight: 500;
+      
+      color: var(--accent);
+            text-
+decoration: none;
+            font-weight: 50
+0;
         }
         .card a:hover {
-            color: var(--accent-hover);
-            text-decoration: underline;
+        
+    color: var(--accent-hover);
+            t
+ext-decoration: underline;
         }
-        .section-title {
-            font-size: 1.75rem;
+        
+.section-title {
+            font-size: 1.75r
+em;
             font-weight: 700;
-            margin-bottom: 0.25rem;
+           
+ margin-bottom: 0.25rem;
         }
-        .section-subtitle {
-            color: var(--text-muted);
+        .s
+ection-subtitle {
+            color: var(--te
+xt-muted);
             font-size: 1rem;
-        }
+     
+   }
         .btn {
-            display: inline-flex;
+            display: inli
+ne-flex;
             align-items: center;
-            gap: 0.5rem;
-            background: var(--accent);
+   
+         gap: 0.5rem;
+            background:
+ var(--accent);
             color: white;
-            padding: 0.6rem 1.25rem;
-            border-radius: 8px;
-            text-decoration: none;
+   
+         padding: 0.6rem 1.25rem;
+           
+ border-radius: 8px;
+            text-decorat
+ion: none;
             font-weight: 600;
-            font-size: 0.9rem;
-            transition: background 0.2s;
+    
+        font-size: 0.9rem;
+            transi
+tion: background 0.2s;
         }
-        .btn:hover { background: var(--accent-hover); }
-        .btn-outline {
-            background: transparent;
-            border: 1.5px solid var(--border);
-            color: var(--text);
+        .btn
+:hover { background: var(--accent-hover); }
+ 
+       .btn-outline {
+            background:
+ transparent;
+            border: 1.5px solid
+ var(--border);
+            color: var(--text
+);
         }
         .btn-outline:hover {
-            background: var(--surface-alt);
-            border-color: var(--accent);
-            color: var(--accent);
+   
+         background: var(--surface-alt);
+    
+        border-color: var(--accent);
+        
+    color: var(--accent);
         }
-        .download-latest {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 1.5rem 1.75rem;
+        .
+download-latest {
+            background: var
+(--surface);
+            border: 1px solid va
+r(--border);
+            border-radius: var(-
+-radius);
+            padding: 1.5rem 1.75rem
+;
             display: flex;
-            align-items: center;
-            justify-content: space-between;
+            alig
+n-items: center;
+            justify-content:
+ space-between;
             flex-wrap: wrap;
+
             gap: 1rem;
-            margin-top: 1rem;
+            margin-top
+: 1rem;
         }
-        .download-latest .version {
+        .download-latest .v
+ersion {
             font-size: 1.25rem;
-            font-weight: 700;
+    
+        font-weight: 700;
         }
-        .download-latest .meta {
-            color: var(--text-muted);
-            font-size: 0.85rem;
+        .
+download-latest .meta {
+            color: va
+r(--text-muted);
+            font-size: 0.85r
+em;
         }
         footer {
-            text-align: center;
+            te
+xt-align: center;
             padding: 2rem;
+
             color: var(--text-muted);
-            font-size: 0.85rem;
-            border-top: 1px solid var(--border);
+       
+     font-size: 0.85rem;
+            border-t
+op: 1px solid var(--border);
         }
-        footer a { color: var(--accent); text-decoration: none; }
-        @media (max-width: 640px) {
-            .hero h1 { font-size: 2rem; }
-            .grid { grid-template-columns: 1fr; }
+      
+  footer a { color: var(--accent); text-decor
+ation: none; }
+        @media (max-width: 640
+px) {
+            .hero h1 { font-size: 2rem;
+ }
+            .grid { grid-template-columns:
+ 1fr; }
         }
     </style>
 </head>
 <body>
+
     <div class="hero">
-        <h1>mini-os</h1>
-        <p>A minimalistic operating system, built from scratch in Assembly</p>
-        <div class="badges">
-            <span class="badge">&#x1F4BE; x86 Real/Protected Mode</span>
-            <span class="badge">&#x1F6E0; Latest: v0.9.12</span>
-            <span class="badge">&#x1F4DC; MIT License</span>
-        </div>
+        <h1>mini-os</
+h1>
+        <p>A minimalistic operating syste
+m, built from scratch in Assembly</p>
+       
+ <div class="badges">
+            <span class
+="badge">&#x1F4BE; x86 Real/Protected Mode</s
+pan>
+            <span class="badge">&#x1F6E0
+; MNOS16 v0.9.12</span>
+            <span cl
+ass="badge">&#x1F4DC; MIT License</span>
+    
+    </div>
     </div>
 
-    <div class="container">
-        <h2 class="section-title">Project Resources</h2>
-        <p class="section-subtitle">Everything you need to understand, build, and run mini-os.</p>
+    <div class="contai
+ner">
+        <h2 class="section-title">Proje
+ct Resources</h2>
+        <p class="section-s
+ubtitle">Everything you need to understand, b
+uild, and run mini-os.</p>
 
-        <div class="grid">
-            <!-- Design Documentation -->
+        <div clas
+s="grid">
+            <!-- Design Documentati
+on -->
             <div class="card">
-                <h3><span class="card-icon icon-docs">&#x1F4D6;</span> Design Documentation</h3>
+       
+         <h3><span class="card-icon icon-docs
+">&#x1F4D6;</span> Design Documentation</h3>
+
                 <ul>
-                    <li><a href="https://github.com/ambaner/mini-os/blob/main/doc/DESIGN.md">System Design Overview</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/blob/main/doc/MEMORY-LAYOUT.md">Memory Layout</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/blob/main/doc/MEMORY-MANAGER.md">Memory Manager</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/blob/main/doc/CPU-MODES-AND-TRANSITIONS.md">CPU Modes &amp; Transitions</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/blob/main/doc/BOOT-LAYOUT-RATIONALE.md">Boot Layout Rationale</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/blob/main/doc/LOADER.md">Loader</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/blob/main/doc/FILESYSTEM.md">Filesystem</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/blob/main/doc/SYSTEM-CALLS.md">System Calls</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/blob/main/doc/PROGRAM-LOADER.md">Program Loader</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/blob/main/doc/MNEX-BINARY-FORMAT.md">MNEX Binary Format</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/blob/main/doc/MNMON.md">MNMON (Monitor)</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/blob/main/doc/EDITOR.md">Editor</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/blob/main/doc/COMMAND-LINE.md">Command Line</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/blob/main/doc/DEBUGGING.md">Debugging Guide</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/blob/main/doc/TESTING.md">Testing Strategy</a></li>
-                </ul>
+                    <li>
+<a href="https://github.com/ambaner/mini-os/b
+lob/main/doc/DESIGN.md">System Design Overvie
+w</a></li>
+                    <li><a href="h
+ttps://github.com/ambaner/mini-os/blob/main/d
+oc/MEMORY-LAYOUT.md">Memory Layout</a></li>
+ 
+                   <li><a href="https://githu
+b.com/ambaner/mini-os/blob/main/doc/MEMORY-MA
+NAGER.md">Memory Manager</a></li>
+           
+         <li><a href="https://github.com/amba
+ner/mini-os/blob/main/doc/CPU-MODES-AND-TRANS
+ITIONS.md">CPU Modes &amp; Transitions</a></l
+i>
+                    <li><a href="https://g
+ithub.com/ambaner/mini-os/blob/main/doc/BOOT-
+LAYOUT-RATIONALE.md">Boot Layout Rationale</a
+></li>
+                    <li><a href="https
+://github.com/ambaner/mini-os/blob/main/doc/L
+OADER.md">Loader</a></li>
+                   
+ <li><a href="https://github.com/ambaner/mini
+-os/blob/main/doc/FILESYSTEM.md">Filesystem</
+a></li>
+                    <li><a href="http
+s://github.com/ambaner/mini-os/blob/main/doc/
+SYSTEM-CALLS.md">System Calls</a></li>
+      
+              <li><a href="https://github.com
+/ambaner/mini-os/blob/main/doc/PROGRAM-LOADER
+.md">Program Loader</a></li>
+                
+    <li><a href="https://github.com/ambaner/m
+ini-os/blob/main/doc/MNEX-BINARY-FORMAT.md">M
+NEX Binary Format</a></li>
+                  
+  <li><a href="https://github.com/ambaner/min
+i-os/blob/main/doc/MNMON.md">MNMON (Monitor)<
+/a></li>
+                    <li><a href="htt
+ps://github.com/ambaner/mini-os/blob/main/doc
+/EDITOR.md">Editor</a></li>
+                 
+   <li><a href="https://github.com/ambaner/mi
+ni-os/blob/main/doc/COMMAND-LINE.md">Command 
+Line</a></li>
+                    <li><a href
+="https://github.com/ambaner/mini-os/blob/mai
+n/doc/DEBUGGING.md">Debugging Guide</a></li>
+
+                    <li><a href="https://gith
+ub.com/ambaner/mini-os/blob/main/doc/TESTING.
+md">Testing Strategy</a></li>
+               
+ </ul>
             </div>
 
-            <!-- Downloads -->
+            <!-- D
+ownloads -->
             <div class="card">
-                <h3><span class="card-icon icon-download">&#x2B07;</span> Downloads</h3>
-                <div class="download-latest">
-                    <div>
-                        <div class="version">MNOS16 v0.9.12</div>
-                        <div class="meta">Latest stable release</div>
-                    </div>
-                    <a class="btn" href="https://github.com/ambaner/mini-os/releases/download/v0.9.12/MNOS16-v0.9.12.zip">&#x2B07; Download .zip</a>
+ 
+               <h3><span class="card-icon ico
+n-download">&#x2B07;</span> Downloads</h3>
+  
+              <div class="download-latest">
+ 
+                   <div>
+                    
+    <div class="version">MNOS16 v0.9.12</div>
+
+                        <div class="meta">La
+test stable release</div>
+                   
+ </div>
+                    <a class="btn" hr
+ef="https://github.com/ambaner/mini-os/releas
+es/download/v0.9.12/MNOS16-v0.9.12.zip">&#x2B
+07; Download .zip</a>
                 </div>
-                <br>
-                <h4 style="font-size:0.9rem; color: var(--text-muted); margin-bottom:0.5rem;">Previous Releases</h4>
-                <ul>
-                    <li><a href="https://github.com/ambaner/mini-os/releases/tag/v0.9.11">v0.9.11</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/releases/tag/v0.9.10">v0.9.10</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/releases/tag/v0.9.9">v0.9.9</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/releases/tag/v0.9.8">v0.9.8</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/releases/tag/v0.9.7">v0.9.7</a></li>
-                </ul>
-                <br>
-                <a class="btn btn-outline" href="https://github.com/ambaner/mini-os/releases">View All Releases</a>
-            </div>
 
-            <!-- Test Coverage -->
-            <div class="card">
-                <h3><span class="card-icon icon-test">&#x2705;</span> Test Coverage</h3>
-                <p style="margin-bottom:1rem; color: var(--text-muted); font-size:0.9rem;">
-                    Automated test coverage reports generated from the test suite.
-                </p>
-                <a class="btn" href="coverage/">&#x1F4CA; View Coverage Report</a>
-                <br><br>
+                <br>
+                <h4 styl
+e="font-size:0.9rem; color: var(--text-muted)
+; margin-bottom:0.5rem;">Previous Releases</h
+4>
                 <ul>
-                    <li><a href="coverage/trend.html">Coverage Trend</a></li>
-                    <li><a href="coverage/summary.json">Summary (JSON)</a></li>
-                    <li><a href="coverage/history.json">History (JSON)</a></li>
+                    <
+li><a href="https://github.com/ambaner/mini-o
+s/releases/tag/v0.9.11">v0.9.11</a></li>
+    
+                <li><a href="https://github.c
+om/ambaner/mini-os/releases/tag/v0.9.10">v0.9
+.10</a></li>
+                    <li><a href=
+"https://github.com/ambaner/mini-os/releases/
+tag/v0.9.9">v0.9.9</a></li>
+                 
+   <li><a href="https://github.com/ambaner/mi
+ni-os/releases/tag/v0.9.8">v0.9.8</a></li>
+  
+                  <li><a href="https://github
+.com/ambaner/mini-os/releases/tag/v0.9.7">v0.
+9.7</a></li>
                 </ul>
-            </div>
+          
+      <br>
+                <a class="btn btn-
+outline" href="https://github.com/ambaner/min
+i-os/releases">View All Releases</a>
+        
+    </div>
 
-            <!-- Source & Contributing -->
+            <!-- Test Coverage --
+>
             <div class="card">
-                <h3><span class="card-icon icon-source">&#x1F4BB;</span> Source &amp; Contributing</h3>
-                <p style="margin-bottom:1rem; color: var(--text-muted); font-size:0.9rem;">
-                    Explore the source, report issues, or contribute to mini-os.
-                </p>
+            
+    <h3><span class="card-icon icon-test">&#x
+2705;</span> Test Coverage</h3>
+             
+   <p style="margin-bottom:1rem; color: var(-
+-text-muted); font-size:0.9rem;">
+           
+         Automated test coverage reports gene
+rated from the test suite.
+                </
+p>
+                <a class="btn" href="cover
+age/">&#x1F4CA; View Coverage Report</a>
+    
+            <br><br>
                 <ul>
-                    <li><a href="https://github.com/ambaner/mini-os">&#x1F4C1; GitHub Repository</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/blob/main/README.md">&#x1F4D6; README</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/blob/main/CONTRIBUTING.md">&#x1F91D; Contributing Guide</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/blob/main/CHANGELOG.md">&#x1F4DD; Changelog</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/blob/main/CODE_OF_CONDUCT.md">&#x1F4DC; Code of Conduct</a></li>
-                    <li><a href="https://github.com/ambaner/mini-os/issues">&#x1F41B; Issue Tracker</a></li>
+   
+                 <li><a href="coverage/trend.
+html">Coverage Trend</a></li>
+               
+     <li><a href="coverage/summary.json">Summ
+ary (JSON)</a></li>
+                    <li><
+a href="coverage/history.json">History (JSON)
+</a></li>
                 </ul>
+            <
+/div>
+
+            <!-- Source & Contributing
+ -->
+            <div class="card">
+         
+       <h3><span class="card-icon icon-source
+">&#x1F4BB;</span> Source &amp; Contributing<
+/h3>
+                <p style="margin-bottom:
+1rem; color: var(--text-muted); font-size:0.9
+rem;">
+                    Explore the source
+, report issues, or contribute to MNOS16.
+  
+              </p>
+                <ul>
+     
+               <li><a href="https://github.co
+m/ambaner/mini-os">&#x1F4C1; GitHub Repositor
+y</a></li>
+                    <li><a href="h
+ttps://github.com/ambaner/mini-os/blob/main/R
+EADME.md">&#x1F4D6; README</a></li>
+         
+           <li><a href="https://github.com/am
+baner/mini-os/blob/main/CONTRIBUTING.md">&#x1
+F91D; Contributing Guide</a></li>
+           
+         <li><a href="https://github.com/amba
+ner/mini-os/blob/main/CHANGELOG.md">&#x1F4DD;
+ Changelog</a></li>
+                    <li><
+a href="https://github.com/ambaner/mini-os/bl
+ob/main/CODE_OF_CONDUCT.md">&#x1F4DC; Code of
+ Conduct</a></li>
+                    <li><a 
+href="https://github.com/ambaner/mini-os/issu
+es">&#x1F41B; Issue Tracker</a></li>
+        
+        </ul>
             </div>
-        </div>
+        </di
+v>
     </div>
 
     <footer>
-        <p>Built with &#x2764; by <a href="https://github.com/ambaner">ambaner</a> &middot; <a href="https://github.com/ambaner/mini-os/blob/main/LICENSE">MIT License</a></p>
+        <p>Built 
+with &#x2764; by <a href="https://github.com/
+ambaner">ambaner</a> &middot; <a href="https:
+//github.com/ambaner/mini-os/blob/main/LICENS
+E">MIT License</a></p>
     </footer>
 </body>
+
 </html>
+
