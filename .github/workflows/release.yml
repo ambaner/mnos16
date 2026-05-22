@@ -15,7 +15,7 @@ jobs:
     - name: Setup NASM
       uses: ilammy/setup-nasm@v1
 
-    - name: Build mini-os
+    - name: Build MNOS16
       run: .\build.bat
       shell: cmd
 
@@ -23,7 +23,7 @@ jobs:
       shell: pwsh
       run: |
         $tag = "${{ github.ref_name }}"
-        $stagingDir = "mini-os-$tag"
+        $stagingDir = "MNOS16-$tag"
 
         # Create release directory structure
         New-Item -ItemType Directory -Force -Path `
@@ -40,9 +40,9 @@ jobs:
         Copy-Item "build\boot\shell.sys"     "$stagingDir\distro\mbr\"
         Copy-Item "build\boot\fs.sys"        "$stagingDir\distro\mbr\"
         Copy-Item "build\boot\mm.sys"        "$stagingDir\distro\mbr\"
-        Copy-Item "build\boot\hello.mnx"     "$stagingDir\distro\mbr\"
+        Copy-Item "build\boot\edit.mnx"      "$stagingDir\distro\mbr\"
         Copy-Item "build\boot\mnmon.mnx"     "$stagingDir\distro\mbr\"
-        Copy-Item "build\boot\mini-os.vhd"   "$stagingDir\vhd\"
+        Copy-Item "build\boot\MNOS16.vhd"    "$stagingDir\vhd\"
         Copy-Item "tools\setup-vm.ps1"        "$stagingDir\setup-vm\"
         Copy-Item "tools\create-vhd.ps1"      "$stagingDir\tools\"
         Copy-Item "tools\create-vhd.bat"      "$stagingDir\tools\"
@@ -61,29 +61,29 @@ jobs:
 
         # Create README.txt
         @"
-        mini-os $tag
+        MNOS16 $tag
         ============
 
-        A minimalistic bootable OS. MBR reads the partition table, loads the
+        A minimalistic 16-bit bootable OS. MBR reads the partition table, loads the
         VBR from the active partition. Boot chain: VBR loads LOADER.SYS
         (A20 enablement), which loads KERNEL.SYS (INT 0x80 syscall interface),
         which loads FS.SYS (filesystem), MM.SYS (memory manager), and
         SHELL.SYS (interactive shell).
-        Commands: sysinfo, mem, ver, help, cls, dir, reboot.
-        User programs: hello (demo), mnmon (machine monitor).
+        Commands: sysinfo, mem, ver, help, cls, dir, copy, del, ren, reboot.
+        User programs: edit (text editor), mnmon (machine monitor).
 
         CONTENTS
         --------
         distro\mbr\mbr.bin      Raw 512-byte MBR boot sector
         distro\mbr\vbr.bin      Raw VBR binary (2 sectors / 1 KB)
         distro\mbr\loader.sys   LOADER.SYS (3 sectors)
-        distro\mbr\fs.sys       FS.SYS (3 sectors)
+        distro\mbr\fs.sys       FS.SYS (5 sectors)
         distro\mbr\kernel.sys   KERNEL.SYS (8 sectors)
-        distro\mbr\shell.sys    SHELL.SYS (16 sectors)
-        distro\mbr\mm.sys       MM.SYS (1 sector)
-        distro\mbr\hello.mnx    HELLO.MNX — demo user program
+        distro\mbr\shell.sys    SHELL.SYS (19 sectors)
+        distro\mbr\mm.sys       MM.SYS (2 sectors)
+        distro\mbr\edit.mnx     EDIT.MNX — full-screen text editor
         distro\mbr\mnmon.mnx    MNMON.MNX — interactive machine monitor
-        vhd\mini-os.vhd       16 MB fixed VHD — ready to boot in Hyper-V
+        vhd\MNOS16.vhd        16 MB fixed VHD — ready to boot in Hyper-V
         setup-vm\             Scripts to create/update a Hyper-V VM
         tools\                VHD creation tools (if you rebuild from source)
 
@@ -99,8 +99,8 @@ jobs:
         3. Follow the prompts (defaults are fine).
 
         4. Start the VM:
-             Start-VM -Name 'mini-os'
-             vmconnect localhost 'mini-os'
+             Start-VM -Name 'MNOS16'
+             vmconnect localhost 'MNOS16'
 
         5. You should see "In MBR", partition info, then the shell prompt:
              mnos:\>
@@ -130,7 +130,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: release-package
-        path: mini-os-*.zip
+        path: MNOS16-*.zip
 
   release:
     needs: build
@@ -148,5 +148,5 @@ jobs:
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        files: mini-os-*.zip
+        files: MNOS16-*.zip
         generate_release_notes: true

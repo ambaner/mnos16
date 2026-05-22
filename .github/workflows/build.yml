@@ -21,7 +21,7 @@ jobs:
     - name: Setup NASM
       uses: ilammy/setup-nasm@v1
 
-    - name: Build mini-os
+    - name: Build MNOS16
       run: .\build.bat
       shell: cmd
 
@@ -35,13 +35,13 @@ jobs:
         $krn = "build\boot\kernel.sys"
         $shl = "build\boot\shell.sys"
         $mm  = "build\boot\mm.sys"
-        $hlo = "build\boot\hello.mnx"
         $mon = "build\boot\mnmon.mnx"
-        $img = "build\boot\mini-os.img"
-        $vhd = "build\boot\mini-os.vhd"
+        $edt = "build\boot\edit.mnx"
+        $img = "build\boot\MNOS16.img"
+        $vhd = "build\boot\MNOS16.vhd"
 
         # Check all files exist
-        foreach ($f in @($mbr, $vbr, $ldr, $fsm, $krn, $shl, $mm, $hlo, $mon, $img, $vhd)) {
+        foreach ($f in @($mbr, $vbr, $ldr, $fsm, $krn, $shl, $mm, $mon, $edt, $img, $vhd)) {
             if (-not (Test-Path $f)) { throw "$f not found" }
         }
 
@@ -122,23 +122,15 @@ jobs:
             throw "MM binary is $($mmBytes.Length / 512) sectors but header declares $mmSectors"
         }
 
-        # HELLO.MNX: multiple of 512 bytes + MNEX magic
-        $hloBytes = [System.IO.File]::ReadAllBytes($hlo)
-        if (($hloBytes.Length % 512) -ne 0) { throw "hello.mnx is $($hloBytes.Length) bytes (not a multiple of 512)" }
-        $hloMagic = [System.Text.Encoding]::ASCII.GetString($hloBytes, 0, 4)
-        if ($hloMagic -ne 'MNEX') { throw "HELLO magic is '$hloMagic' (expected 'MNEX')" }
-        $hloSectors = [BitConverter]::ToUInt16($hloBytes, 4)
-        if ($hloSectors -ne ($hloBytes.Length / 512)) {
-            throw "HELLO binary is $($hloBytes.Length / 512) sectors but header declares $hloSectors"
+        # EDIT.MNX: multiple of 512 bytes + MNEX magic
+        $edtBytes = [System.IO.File]::ReadAllBytes($edt)
+        if (($edtBytes.Length % 512) -ne 0) { throw "edit.mnx is $($edtBytes.Length) bytes (not a multiple of 512)" }
+        $edtMagic = [System.Text.Encoding]::ASCII.GetString($edtBytes, 0, 4)
+        if ($edtMagic -ne 'MNEX') { throw "EDIT magic is '$edtMagic' (expected 'MNEX')" }
+        $edtSectors = [BitConverter]::ToUInt16($edtBytes, 4)
+        if ($edtSectors -ne ($edtBytes.Length / 512)) {
+            throw "EDIT binary is $($edtBytes.Length / 512) sectors but header declares $edtSectors"
         }
-
-        # HELLO.MNX: entry point not all zeros (bytes 6-7)
-        $hloEntry = [BitConverter]::ToUInt16($hloBytes, 6)
-        if ($hloEntry -eq 0) { throw "HELLO.MNX entry point is 0x0000 (likely corrupt)" }
-
-        # HELLO.MNX: contains expected string payload
-        $hloText = [System.Text.Encoding]::ASCII.GetString($hloBytes)
-        if ($hloText -notmatch 'Hello') { throw "HELLO.MNX does not contain 'Hello' string" }
 
         # MNMON.MNX: multiple of 512 bytes + MNEX magic
         $monBytes = [System.IO.File]::ReadAllBytes($mon)
@@ -171,15 +163,15 @@ jobs:
         Write-Host "  kernel.sys   : $($krnBytes.Length) bytes ($krnSectors sectors), magic MNKN"
         Write-Host "  shell.sys    : $($shlBytes.Length) bytes ($shlSectors sectors), magic MNEX"
         Write-Host "  mm.sys       : $($mmBytes.Length) bytes ($mmSectors sectors), magic MNMM"
-        Write-Host "  hello.mnx    : $($hloBytes.Length) bytes ($hloSectors sectors), magic MNEX"
+        Write-Host "  edit.mnx     : $($edtBytes.Length) bytes ($edtSectors sectors), magic MNEX"
         Write-Host "  mnmon.mnx    : $($monBytes.Length) bytes ($monSectors sectors), magic MNEX"
-        Write-Host "  mini-os.img  : $($imgBytes.Length) bytes, partition table OK"
-        Write-Host "  mini-os.vhd  : $($vhdBytes.Length) bytes, VHD footer OK"
+        Write-Host "  MNOS16.img   : $($imgBytes.Length) bytes, partition table OK"
+        Write-Host "  MNOS16.vhd   : $($vhdBytes.Length) bytes, VHD footer OK"
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: mini-os-build
+        name: MNOS16-build
         path: |
           build/boot/mbr.bin
           build/boot/vbr.bin
@@ -188,9 +180,9 @@ jobs:
           build/boot/kernel.sys
           build/boot/shell.sys
           build/boot/mm.sys
-          build/boot/hello.mnx
+          build/boot/edit.mnx
           build/boot/mnmon.mnx
-          build/boot/mini-os.vhd
+          build/boot/MNOS16.vhd
         retention-days: 30
 
   test:
