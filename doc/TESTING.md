@@ -1,14 +1,14 @@
 # Unit Testing — Design Document
 
-**Version:** 1.1  
-**Status:** Tier 1 implemented (v0.9.9); branch coverage + trend tracking added  
+**Version:** 2.0  
+**Status:** Tier 1 implemented (v0.9.12); 160 tests across 9 modules; branch coverage + trend tracking  
 **Prerequisite:** Python 3.9+, `pip install -r tests/requirements.txt` (unicorn, pytest, capstone)
 
 ---
 
 ## 1. Motivation
 
-mini-os is a bare-metal 16-bit OS with no standard test harness available at
+MNOS16 is a bare-metal 16-bit OS with no standard test harness available at
 runtime.  Traditional unit testing frameworks (xUnit, Google Test, etc.) cannot
 run directly on the target — there is no hosted C runtime, no linker, and no
 loader.
@@ -61,10 +61,22 @@ and memory state.
 | `shell_parse_args` | `shell_parse_args.inc` | Tokenize args into argc/argv table |
 | `run_parse_filename` | `shell_cmd_run.inc` | Parse "filename.ext args" into 8.3 + args ptr |
 | `strcmp` | `shell_readline.inc` | Compare two NUL-terminated strings |
+| `cmdmatch` | `shell_readline.inc` | Prefix-match command against string table |
 | `mm_alloc` | `mm.asm` | First-fit heap allocation with block splitting |
 | `mm_free` | `mm.asm` | Free block + forward coalescing |
 | `mm_avail` | `mm.asm` | Report largest and total free memory |
 | `mm_info` | `mm.asm` | Report total/used/free/block-count statistics |
+| `fs_write_file` | `fs.asm` | Create/overwrite files in MNFS directory |
+| `fs_delete_file` | `fs.asm` | Tombstone-delete files (system-file protection) |
+| `fs_rename_file` | `fs.asm` | Rename files (duplicate-name check) |
+| `ed_gap_insert` | `edit_gap.inc` | Gap buffer insert character |
+| `ed_gap_delete_back` | `edit_gap.inc` | Gap buffer delete backward |
+| `ed_gap_delete_fwd` | `edit_gap.inc` | Gap buffer delete forward |
+| `ed_gap_move_to` | `edit_gap.inc` | Move gap to arbitrary offset |
+| `ed_search_text` | `edit_find.inc` | Linear search through gap buffer |
+| `ed_get_char_at_offset` | `edit_find.inc` | Gap-aware character access |
+| `ed_atoi` | `edit_find.inc` | ASCII decimal string to integer |
+| `ed_parse_8_3` | `edit_file.inc` | Parse filename into 8.3 format for FS |
 
 **How it works:**
 
@@ -146,27 +158,37 @@ via the QEMU monitor protocol (QMP), and assert on serial port output.
 ```
 tests/
 ├── conftest.py              # pytest fixtures, shared emulator setup
+├── gen_constants.py         # Auto-generates constants.py from .inc files
 ├── harness/
 │   ├── emulator.py          # MiniOSEmulator class (Unicorn wrapper + edge tracking)
 │   ├── assembler.py         # NASM assembly helper (build test binaries)
 │   ├── coverage.py          # Coverage report generator (stmt + branch + trend)
-│   ├── branch_coverage.py   # Capstone-based branch coverage analyzer
-│   └── constants.py         # Memory addresses mirroring memory.inc
+│   └── constants.py         # Auto-generated from memory.inc + syscalls.inc + mnfs.inc
 ├── stubs/
 │   ├── stub_parse_args.asm  # Harness: includes shell_parse_args.inc + hlt
 │   ├── stub_parse_fname.asm # Harness: includes run_parse_filename + hlt
 │   ├── stub_strcmp.asm       # Harness: includes strcmp + hlt
-│   └── stub_mm.asm          # Harness: MM allocator routines + hlt
-├── test_parse_args.py       # Tests for shell_parse_args
-├── test_parse_filename.py   # Tests for run_parse_filename
-├── test_strcmp.py            # Tests for strcmp
-├── test_mm.py               # Tests for mm_alloc/free/avail/info
+│   ├── stub_cmdmatch.asm    # Harness: includes cmdmatch + hlt
+│   ├── stub_mm.asm          # Harness: MM allocator routines + hlt
+│   ├── stub_fs_write.asm    # Harness: FS write/delete/rename + hlt
+│   ├── stub_edit_gap.asm    # Harness: gap buffer ops + hlt
+│   ├── stub_edit_find.asm   # Harness: search/char_at/atoi + hlt
+│   └── stub_edit_fname.asm  # Harness: editor filename parsing + hlt
+├── test_parse_args.py       # 15 tests for shell_parse_args
+├── test_parse_filename.py   # 9 tests for run_parse_filename
+├── test_strcmp.py            # 11 tests for strcmp
+├── test_cmdmatch.py         # 12 tests for cmdmatch (prefix matching)
+├── test_mm.py               # 29 tests for mm_alloc/free/avail/info
+├── test_fs_write.py         # 26 tests for fs write/delete/rename
+├── test_edit_gap.py         # 27 tests for gap buffer operations
+├── test_edit_find.py        # 19 tests for search/char_at_offset/atoi
+├── test_edit_fname.py       # 12 tests for editor 8.3 filename parsing
 └── requirements.txt         # unicorn, pytest, capstone
 ```
 
 ### 3.2 Test Harness Design
 
-The `MiniOSEmulator` class wraps Unicorn to provide a mini-os-aware API:
+The `MiniOSEmulator` class wraps Unicorn to provide an MNOS16-aware API:
 
 ```python
 class MiniOSEmulator:
@@ -291,7 +313,7 @@ Python is not installed (graceful degradation).
 The coverage report generates a JSON file consumed by shields.io:
 
 ```markdown
-![Coverage](https://img.shields.io/endpoint?url=https://USER.github.io/mini-os/coverage/badge.json)
+![Coverage](https://img.shields.io/endpoint?url=https://USER.github.io/MNOS16/coverage/badge.json)
 ```
 
 ---
@@ -349,12 +371,18 @@ The coverage report generates a JSON file consumed by shields.io:
 
 ### 6.1 Current Testable Code (Tier 1)
 
-| Module | Routine | Lines | Status |
+| Module | Routine | Tests | Status |
 |--------|---------|-------|--------|
-| `shell_parse_args.inc` | `shell_parse_args` | ~90 | ✅ Tested |
-| `shell_cmd_run.inc` | `run_parse_filename` | ~100 | ✅ Tested |
-| `shell_readline.inc` | `strcmp` | ~25 | ✅ Tested |
-| | **Total** | **~215** | |
+| `shell_parse_args.inc` | `shell_parse_args` | 15 | ✅ Tested |
+| `shell_cmd_run.inc` | `run_parse_filename` | 9 | ✅ Tested |
+| `shell_readline.inc` | `strcmp` | 11 | ✅ Tested |
+| `shell_readline.inc` | `cmdmatch` | 12 | ✅ Tested |
+| `mm.asm` | `mm_alloc/free/avail/info` | 29 | ✅ Tested |
+| `fs.asm` | `fs_write/delete/rename` | 26 | ✅ Tested |
+| `edit_gap.inc` | `gap insert/delete/move` | 27 | ✅ Tested |
+| `edit_find.inc` | `search/char_at/atoi` | 19 | ✅ Tested |
+| `edit_file.inc` | `ed_parse_8_3` | 12 | ✅ Tested |
+| | **Total** | **160** | |
 
 ### 6.2 Future Testable Code (Tier 2)
 
@@ -374,6 +402,7 @@ The coverage report generates a JSON file consumed by shields.io:
 | FS module | Directory listing, file read | Needs disk I/O |
 | Shell | Command dispatch, readline | Needs keyboard + video |
 | MNMON | All commands | Needs full OS running |
+| EDIT (UI) | Menu system, dialogs, rendering | Needs VGA + keyboard |
 
 ---
 
@@ -438,6 +467,7 @@ If coverage drops below the threshold, the job fails.
 | Package | Version | Purpose |
 |---------|---------|---------|
 | `unicorn` | ≥2.0 | x86 CPU emulator |
+| `capstone` | ≥5.0 | Disassembler for branch coverage analysis |
 | `pytest` | ≥7.0 | Test runner |
 | `pytest-html` | ≥4.0 | HTML test report |
 | NASM | ≥2.15 | Assembler (already in CI) |

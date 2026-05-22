@@ -1,8 +1,8 @@
 ; =============================================================================
-; Mini-OS Shell (SHELL.SYS) - Interactive Command Shell (User-Mode Executable)
+; MNOS16 Shell (SHELL.SYS) - Interactive Command Shell (User-Mode Executable)
 ;
 ; Loaded by KERNEL.SYS into memory at 0x3000.  Provides the interactive
-; command-line interface for mini-os.
+; command-line interface for MNOS16.
 ;
 ; This is a user-mode executable (MNEX).  ALL hardware access goes through
 ; the kernel's INT 0x80 syscall interface — no direct BIOS calls or port I/O.
@@ -43,7 +43,7 @@
 ; SHELL HEADER
 ; =============================================================================
 shell_magic     db 'MNEX'           ; Magic identifier — user-mode executable
-shell_sectors   dw 18               ; Shell size in sectors (updated as needed)
+shell_sectors   dw 19               ; Shell size in sectors (updated as needed)
 
 ; =============================================================================
 ; SHELL INIT
@@ -171,4 +171,4 @@ shell_prompt:
 ; =============================================================================
 ; PADDING — fill to sector boundary (16 sectors = 8192 bytes)
 ; =============================================================================
-times (18 * 512) - ($ - $$) db 0
+times (19 * 512) - ($ - $$) db 0

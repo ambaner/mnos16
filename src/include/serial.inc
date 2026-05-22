@@ -16,7 +16,7 @@
 ;   serial_crlf   — Send CR+LF
 ;
 ; Hyper-V COM1 setup (run once, admin PowerShell):
-;   Set-VMComPort -VMName "mini-os" -Number 1 -Path "\\.\pipe\minios-serial"
+;   Set-VMComPort -VMName "MNOS16" -Number 1 -Path "\\.\pipe\MNOS16-SERIAL"
 ;
 ; Read output with PuTTY (Serial, \\.\pipe\minios-serial) or PowerShell.
 ; =============================================================================

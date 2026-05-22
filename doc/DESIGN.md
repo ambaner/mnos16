@@ -1,13 +1,13 @@
-# Mini-OS Design Document
+# MNOS16 Design Document
 
 ## 1. Project Overview
 
-**Mini-OS** is a minimalistic operating system built from scratch, targeting the x86
+**MNOS16** is a minimalistic 16-bit operating system built from scratch, targeting the x86
 architecture. The project is educational — designed so anyone can clone the repository,
 build a bootable disk image, and run it in a Hyper-V virtual machine with no prior
 OS-development experience.
 
-The current milestone is **M12: MNFS Write Support** — the MBR chain-loads a
+The current milestone is **M12: Text Editor + MNOS16 Rename** — the MBR chain-loads a
 minimal VBR, which finds and loads LOADER.SYS from the MNFS directory, LOADER
 enables A20 and presents a boot menu, the kernel installs INT 0x80 syscalls,
 loads FS.SYS (filesystem module with INT 0x81 API supporting read and write),
@@ -17,7 +17,9 @@ lookup, no hardcoded disk offsets.  The shell can load and execute user
 programs (`.MNX` files) from disk into a 30 KB Transient Program Area, with
 structured argc/argv parsing for command-line arguments.  The filesystem
 supports runtime file creation, deletion (tombstone-based), and renaming.
-A Python + Unicorn Engine test framework provides 90 unit tests with coverage
+EDIT.MNX provides a full-screen text editor with gap buffer, modal dialogs,
+Find/Replace All, and menu hotkeys.
+A Python + Unicorn Engine test framework provides 160 unit tests with coverage
 reporting.  Debug builds add serial logging, syscall tracing, user-mode debug
 syscalls, assertion macros, INT depth tracking, DAP hex dumps, and CPU fault
 handlers.  Fault handlers are present in both release and debug builds (PIC

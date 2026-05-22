@@ -1,8 +1,8 @@
 ; =============================================================================
-; Mini-OS Kernel (KERNEL.SYS) - 16-bit Real-Mode Kernel
+; MNOS16 Kernel (KERNEL.SYS) - 16-bit Real-Mode Kernel
 ;
-; Loaded by LOADER.SYS into memory at 0x5000.  This is the first component
-; in mini-os that acts as a proper kernel:
+; Loaded by LOADER.SYS into memory at 0x5800.  This is the first component
+; in MNOS16 that acts as a proper kernel:
 ;
 ;   1. Installs a syscall handler at INT 0x80 in the IVT
 ;   2. Finds and loads FS.SYS (filesystem module) from the MNFS directory
@@ -40,7 +40,7 @@
 %include "debug.inc"
 
 [BITS 16]
-[ORG 0x5000]                        ; Loader loads us here
+[ORG 0x5800]                        ; Loader loads us here
 
 ; =============================================================================
 ; KERNEL HEADER
@@ -72,7 +72,7 @@ kernel_start:
     call install_fault_handlers
     DBG "KERNEL: PIC remapped, fault handlers installed (INT 0x00-0x08)"
 
-    ; --- Plant stack canary at 0x7000 -----------------------------------------
+    ; --- Plant stack canary at 0x7400 -----------------------------------------
     ; Must be done BEFORE loading FS/SHELL (which use significant stack).
     ; In release builds, CANARY_INIT expands to nothing (0 bytes).
     CANARY_INIT

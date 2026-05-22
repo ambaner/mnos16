@@ -8,10 +8,10 @@ Regenerate with:  python tests/gen_constants.py
 LOADER_SEG           = 0x00
 LOADER_OFF           = 0x0800
 KERNEL_SEG           = 0x00
-KERNEL_OFF           = 0x5000
+KERNEL_OFF           = 0x5800
 SHELL_SEG            = 0x00
 SHELL_OFF            = 0x3000
-STACK_CANARY_ADDR    = 0x7000
+STACK_CANARY_ADDR    = 0x7400
 STACK_CANARY_VALUE   = 0xDEAD
 STACK_CANARY_SIZE    = 4
 HMA_SEG              = 0xFFFF

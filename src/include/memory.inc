@@ -7,8 +7,8 @@
 ; Memory map (low → high):
 ;   0x0600  Boot Info Block (BIB)   — 6 bytes, shared boot data
 ;   0x0800  LOADER.SYS              — up to 8 KB (16 sectors)
-;   0x3000  SHELL.SYS               — up to 8 KB (16 sectors)
-;   0x5000  KERNEL.SYS              — up to 8 KB (16 sectors)
+;   0x3000  SHELL.SYS               — up to 10 KB (20 sectors)
+;   0x5800  KERNEL.SYS              — up to 7 KB (14 sectors)
 ;   0x7C00  VBR (boot-time only)    — 1 KB (2 sectors)
 ;
 ; See doc/MEMORY-LAYOUT.md for the complete memory map.
@@ -18,7 +18,7 @@ LOADER_SEG   equ 0x0000             ; Segment for LOADER.SYS
 LOADER_OFF   equ 0x0800             ; Offset for LOADER.SYS
 
 KERNEL_SEG   equ 0x0000             ; Segment for KERNEL.SYS
-KERNEL_OFF   equ 0x5000             ; Offset for KERNEL.SYS
+KERNEL_OFF   equ 0x5800             ; Offset for KERNEL.SYS
 
 SHELL_SEG    equ 0x0000             ; Segment for SHELL.SYS
 SHELL_OFF    equ 0x3000             ; Offset for SHELL.SYS
@@ -26,20 +26,20 @@ SHELL_OFF    equ 0x3000             ; Offset for SHELL.SYS
 ; =============================================================================
 ; Stack canary constants
 ;
-; The stack grows downward from 0x7C00.  The safe stack floor is 0x7000,
-; giving ~3 KB of stack space.  We place a 4-byte sentinel ("canary") at
-; the very bottom of the stack zone.  If the stack ever grows past 0x7004
+; The stack grows downward from 0x7C00.  The safe stack floor is 0x7400,
+; giving ~2 KB of stack space.  We place a 4-byte sentinel ("canary") at
+; the very bottom of the stack zone.  If the stack ever grows past 0x7404
 ; and overwrites the canary, we know a stack overflow occurred.
 ;
 ; Layout:
-;   0x7000–0x7003  Canary (4 bytes: two copies of 0xDEAD)
-;   0x7004–0x7BFF  Usable stack (~3068 bytes)
+;   0x7400–0x7403  Canary (4 bytes: two copies of 0xDEAD)
+;   0x7404–0x7BFF  Usable stack (~2044 bytes)
 ;   0x7C00         Initial SP (set by MBR, never moved)
 ;
 ; The canary value 0xDEAD was chosen because it is visually distinctive
 ; in hex dumps and unlikely to appear as a legitimate stack value.
 ; =============================================================================
-STACK_CANARY_ADDR  equ 0x7000        ; Linear address of canary (stack floor)
+STACK_CANARY_ADDR  equ 0x7400        ; Linear address of canary (stack floor)
 STACK_CANARY_VALUE equ 0xDEAD        ; Sentinel value (written as two words)
 STACK_CANARY_SIZE  equ 4             ; Total canary size in bytes
 
@@ -50,7 +50,7 @@ STACK_CANARY_SIZE  equ 4             ; Total canary size in bytes
 ; A20 is enabled.  Segment 0xFFFF with offsets 0x0010–0xFFFF maps to
 ; physical addresses 0x100000–0x10FFEF.
 ;
-; mini-os uses the HMA as the primary heap region (~64 KB), replacing the
+; MNOS16 uses the HMA as the primary heap region (~64 KB), replacing the
 ; conventional 4 KB heap.  The MM.SYS code stays in conventional memory;
 ; only the heap data lives in HMA.
 ;

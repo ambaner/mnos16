@@ -6,6 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.9.12] - 2026-05-22
+
+### Added
+- **EDIT.MNX — Full-screen text editor** — DOS EDIT.COM-style editor loaded as
+  a standalone MNEX binary (13 sectors, 6.5 KB):
+  - **Gap buffer** data structure for O(1) insert/delete at cursor
+  - **Menu bar** (File / Edit / Search) with drop-down navigation and hotkey
+    highlighting (first letter in red indicates Alt+key accelerator)
+  - **Cut/Copy/Paste** with 512-byte clipboard (Ctrl+X/C/V)
+  - **Find** (Ctrl+F), **Find Next** (F3), **Replace** (Ctrl+H, single),
+    **Replace All** (F4, all occurrences from cursor to end)
+  - **Go to Line** (Ctrl+G)
+  - **Block selection** (Shift+arrow keys)
+  - **Modal dialog boxes** — Find, Replace, Go to Line, and Save-As use a
+    centered 4-row modal dialog (title bar, input field, Enter/Esc hint)
+  - **File picker** — Open command uses a scrollable file list dialog
+  - **File load/save** via INT 0x81 (FS_READ_FILE / FS_WRITE_FILE)
+  - **Status bar** showing filename, Ln:Col, modified flag, INS/OVR mode
+  - **Help screen** (F1)
+  - Insert/Overwrite toggle (Insert key)
+  - Tab expansion (8-column stops)
+  - Ctrl+Home/End for start/end of file, PgUp/PgDn for page scroll
+  - Alt+X to exit with save prompt if modified
+- **doc/EDITOR.md** — comprehensive design document for EDIT.MNX
+- Launched via implicit execution: type `edit` or `edit MYFILE.TXT` at prompt
+
+### Changed
+- **Project rename**: all internal references changed from "mini-os" to "MNOS16"
+  - VM name: `MNOS16` (was `mini-os`)
+  - VHD output: `MNOS16.vhd` (was `mini-os.vhd`)
+  - Raw image: `MNOS16.img` (was `mini-os.img`)
+  - COM pipe: `\\.\pipe\MNOS16-SERIAL` (was `\\.\pipe\minios-serial`)
+  - VM path default: `C:\HyperV\MNOS16`
+  - Build banner: `[MNOS16]`
+- SHELL.SYS sector count: 18 → 19 (updated help text)
+- HELLO.MNX removed from VHD (source remains as example)
+
+---
+
 ## [0.9.11] - 2026-05-19
 
 ### Added

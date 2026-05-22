@@ -1,5 +1,5 @@
 ; =============================================================================
-; MNMON.MNX — Mini-OS Machine Monitor
+; MNMON.MNX — MNOS16 Machine Monitor
 ;
 ; Interactive memory monitor with WinDbg-style commands:
 ;   db XXXX [YYYY]  — display bytes (hex + ASCII)

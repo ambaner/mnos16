@@ -1,5 +1,5 @@
 ; =============================================================================
-; debug.inc — Debug logging and assertion macros for mini-os
+; debug.inc — Debug logging and assertion macros for MNOS16
 ;
 ; Provides DBG, DBG_REG, DBG_REGS, ASSERT, ASSERT_CF_CLEAR, and ASSERT_MAGIC
 ; macros that output to the serial port.  All macros are conditional on
@@ -134,7 +134,7 @@
 ; -----------------------------------------------------------------------------
 ; ASSERT_CF_CLEAR — Halt if carry flag is set (error indicator)
 ;
-; Many BIOS and mini-os operations signal errors via CF.  Place this macro
+; Many BIOS and MNOS16 operations signal errors via CF.  Place this macro
 ; immediately after such a call to catch errors that would otherwise be
 ; silently ignored.
 ;
@@ -252,3 +252,20 @@
 %endmacro
 
 %endif ; DEBUG
+
+; --- Stack canary macros (must be defined before kernel code uses them) -------
+; In debug builds: call canary_init / canary_check (defined in kernel_stack.inc)
+; In release builds: expand to nothing (0 bytes)
+%ifdef DEBUG
+    %macro CANARY_INIT 0
+        call canary_init
+    %endmacro
+    %macro CANARY_CHECK 0
+        call canary_check
+    %endmacro
+%else
+    %macro CANARY_INIT 0
+    %endmacro
+    %macro CANARY_CHECK 0
+    %endmacro
+%endif

@@ -20,11 +20,11 @@ msg_help_text   db 'Available commands:', 13, 10
                 db '  copy     - Copy a file (copy SRC.EXT DST.EXT)', 13, 10
                 db '  del      - Delete a file (del FILENAME.EXT)', 13, 10
                 db '  ren      - Rename a file (ren OLD.EXT NEW.EXT)', 13, 10
-                db '  run      - Run a program (run FILENAME.MNX)', 13, 10
                 db '  ver      - Show version and build info', 13, 10
                 db '  help     - Show this help message', 13, 10
                 db '  cls      - Clear the screen', 13, 10
-                db '  reboot   - Restart the system', 13, 10, 0
+                db '  reboot   - Restart the system', 13, 10
+                db '  (type any .MNX program name to run it)', 13, 10, 0
 
 ; --- Command name strings (for strcmp) ----------------------------------------
 str_sysinfo     db 'sysinfo', 0
@@ -267,6 +267,8 @@ dbg_tag         db 'SHL', 0
 dbg_init        db 'shell starting', 0
 dbg_unknown     db 'unknown command', 0
 dbg_run_exec    db 'launching program', 0
+dbg_run_find    db 'find file', 0
+dbg_run_loading db 'loading to TPA', 0
 dbg_run_err_usage    db 'ERR: usage', 0
 dbg_run_err_notfound db 'ERR: file_not_found', 0
 dbg_run_err_noexec   db 'ERR: not_executable', 0

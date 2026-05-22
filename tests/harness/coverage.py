@@ -1,4 +1,4 @@
-"""Coverage collector and reporter for mini-os unit tests.
+"""Coverage collector and reporter for MNOS16 unit tests.
 
 Generates:
   - coverage/index.html    — HTML coverage report with branch coverage
@@ -169,7 +169,7 @@ def _generate_html_report(out, results, branch_results, overall_pct, overall_bra
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>mini-os Coverage Report</title>
+    <title>MNOS16 Coverage Report</title>
     <style>
         body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
                max-width: 900px; margin: 40px auto; padding: 0 20px;
@@ -188,7 +188,7 @@ def _generate_html_report(out, results, branch_results, overall_pct, overall_bra
     </style>
 </head>
 <body>
-    <h1>mini-os Unit Test Coverage</h1>
+    <h1>MNOS16 Unit Test Coverage</h1>
     <div class="overall">
         <div class="metrics">
             <div class="metric">
@@ -226,7 +226,7 @@ def _generate_trend_html(out: Path):
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>mini-os Coverage Trend</title>
+    <title>MNOS16 Coverage Trend</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -294,7 +294,7 @@ def _generate_trend_html(out: Path):
                     plugins: {
                         title: {
                             display: true,
-                            text: 'mini-os Test Coverage Over Time'
+                            text: 'MNOS16 Test Coverage Over Time'
                         }
                     }
                 }

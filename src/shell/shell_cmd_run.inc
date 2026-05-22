@@ -51,6 +51,16 @@ run_skip_spaces:
     call shell_parse_args
 
     ; --- Step 3: Find file -------------------------------------------------------
+    ; Debug: trace file lookup
+    push bx
+    push si
+    mov bx, dbg_tag
+    mov si, dbg_run_find
+    mov ah, SYS_DBG_PRINT
+    int 0x80
+    pop si
+    pop bx
+
     mov si, run_fname_buf           ; DS:SI = 11-byte filename (or 8-byte name)
     cmp byte [run_ext_provided], 0
     jne .run_exact_search
@@ -105,7 +115,17 @@ run_skip_spaces:
     cmp word [run_file_sectors], USER_PROG_MAX_SEC
     ja .run_err_too_large
 
-    ; --- Load file to TPA (0x9000) --------------------------------------------
+    ; Debug: trace file load
+    push bx
+    push si
+    mov bx, dbg_tag
+    mov si, dbg_run_loading
+    mov ah, SYS_DBG_PRINT
+    int 0x80
+    pop si
+    pop bx
+
+    ; --- Load file to TPA -----------------------------------------------------
     mov si, run_fname_buf           ; DS:SI = filename
     push ds
     pop es                          ; ES = DS = 0

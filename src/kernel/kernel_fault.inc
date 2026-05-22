@@ -145,6 +145,7 @@ fault_common:
 
 %ifdef DEBUG
     ; --- Serial output (debug builds) ----------------------------------------
+    ; Matches on-screen dump: all regs from saved stack frame + stack dump
     mov si, .fault_banner
     call serial_puts
 
@@ -165,8 +166,94 @@ fault_common:
     call serial_hex16
     call serial_crlf
 
-    ; Dump registers to serial (using saved values)
-    DBG_REGS
+    ; Line 2: AX BX CX DX
+    mov si, .reg_ax
+    call serial_puts
+    mov bx, sp
+    mov ax, [ss:bx + 12]
+    call serial_hex16
+    mov si, .reg_bx
+    call serial_puts
+    mov bx, sp
+    mov ax, [ss:bx + 10]
+    call serial_hex16
+    mov si, .reg_cx
+    call serial_puts
+    mov bx, sp
+    mov ax, [ss:bx + 8]
+    call serial_hex16
+    mov si, .reg_dx
+    call serial_puts
+    mov bx, sp
+    mov ax, [ss:bx + 6]
+    call serial_hex16
+    call serial_crlf
+
+    ; Line 3: SI DI BP SP
+    mov si, .reg_si
+    call serial_puts
+    mov bx, sp
+    mov ax, [ss:bx + 4]
+    call serial_hex16
+    mov si, .reg_di
+    call serial_puts
+    mov bx, sp
+    mov ax, [ss:bx + 2]
+    call serial_hex16
+    mov si, .reg_bp
+    call serial_puts
+    mov bx, sp
+    mov ax, [ss:bx + 0]
+    call serial_hex16
+    mov si, .reg_sp
+    call serial_puts
+    mov ax, sp
+    add ax, 22                          ; Original SP before fault frame
+    call serial_hex16
+    call serial_crlf
+
+    ; Line 4: DS ES SS FL
+    mov si, .reg_ds
+    call serial_puts
+    mov ax, ds
+    call serial_hex16
+    mov si, .reg_es
+    call serial_puts
+    mov ax, es
+    call serial_hex16
+    mov si, .reg_ss
+    call serial_puts
+    mov ax, ss
+    call serial_hex16
+    mov si, .reg_fl
+    call serial_puts
+    mov bx, sp
+    mov ax, [ss:bx + 20]
+    call serial_hex16
+    call serial_crlf
+
+    ; Line 5: Stack dump (top 4 words from original stack)
+    mov si, .stack_lbl
+    call serial_puts
+    mov bx, sp
+    mov ax, [ss:bx + 22]
+    call serial_hex16
+    mov al, ' '
+    call serial_putc
+    mov bx, sp
+    mov ax, [ss:bx + 24]
+    call serial_hex16
+    mov al, ' '
+    call serial_putc
+    mov bx, sp
+    mov ax, [ss:bx + 26]
+    call serial_hex16
+    mov al, ' '
+    call serial_putc
+    mov bx, sp
+    mov ax, [ss:bx + 28]
+    call serial_hex16
+    call serial_crlf
 %endif
 
     ; --- Screen output (both builds) -----------------------------------------

@@ -1,5 +1,5 @@
 ; =============================================================================
-; Mini-OS Master Boot Record (MBR)
+; MNOS16 Master Boot Record (MBR)
 ;
 ; This is the very first code that runs when the computer boots.  The BIOS
 ; loads this 512-byte sector from disk sector 0 into memory at 0x7C00, then
@@ -62,7 +62,7 @@ start:
     ;   ------  ----  -----
     ;   0       1     Status — 0x80 = active/bootable, 0x00 = inactive
     ;   1–3     3     CHS address of first sector (legacy, we ignore this)
-    ;   4       1     Partition type (0x7F = mini-os, 0x00 = empty/unused)
+    ;   4       1     Partition type (0x7F = MNOS16, 0x00 = empty/unused)
     ;   5–7     3     CHS address of last sector  (legacy, we ignore this)
     ;   8–11    4     LBA of first sector (32-bit little-endian)
     ;   12–15   4     Size in sectors     (32-bit little-endian)

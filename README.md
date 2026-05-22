@@ -1,12 +1,13 @@
-# mini-os
+# MNOS16
 
-A minimalistic operating system built from scratch in x86 assembly — currently
-at **v0.9.11**.Features a multi-stage boot loader, a microkernel-style
-architecture with separate modules for filesystem and memory management, and an
-interactive shell that can load and run user programs.  Targets Hyper-V Gen 1
-VMs with a unified VHD containing both Release and Debug configurations.
+A minimalistic 16-bit operating system built from scratch in x86 assembly —
+currently at **v0.9.12**.  Features a multi-stage boot loader, a
+microkernel-style architecture with separate modules for filesystem and memory
+management, and an interactive shell that can load and run user programs.
+Targets Hyper-V Gen 1 VMs with a unified VHD containing both Release and Debug
+configurations.
 
-![mini-os booting in Hyper-V](doc/booted.gif)
+![MNOS16 booting in Hyper-V](doc/booted.gif)
 
 [![Build](../../actions/workflows/build.yml/badge.svg)](../../actions/workflows/build.yml)
 
@@ -29,7 +30,7 @@ build.bat clean     # clean build + tests
 The build script will:
 1. Download NASM into `tools/nasm/` if not already installed
 2. Assemble all binaries — release **and** debug variants (11 total)
-3. Create `build/boot/mini-os.vhd` (16 MB fixed VHD with both variants)
+3. Create `build/boot/MNOS16.vhd` (16 MB fixed VHD with both variants)
 
 ### Debug serial output
 
@@ -66,7 +67,7 @@ setup-vm.bat
 
 The script will prompt for a VM name and location (defaults are fine), then
 create a Gen 1 / 32 MB RAM VM with no network adapter and COM1 mapped to
-`\\.\pipe\minios-serial` for serial debug output.  On repeat runs it stops the
+`\\.\pipe\MNOS16-SERIAL` for serial debug output.  On repeat runs it stops the
 VM, swaps in the new VHD, and leaves it ready to start.
 
 ### Boot menu
@@ -89,7 +90,7 @@ VHD — no need to rebuild or swap images.
 After the boot chain completes, you'll see the shell:
 
 ```
-  MNOS v0.9.11 [Release]
+  MNOS v0.9.12 [Release]
 
 mnos:\>
 ```
@@ -109,12 +110,13 @@ Type `help` for a list of commands:
 | `cls` | Clear screen |
 | `reboot` | Warm reboot |
 
-Any unrecognized command is treated as a program name — e.g., typing `hello`
-runs `HELLO.MNX`.  The `.MNX` extension is optional.
+Any unrecognized command is treated as a program name — e.g., typing `edit`
+runs `EDIT.MNX`, typing `mnmon` runs `MNMON.MNX`.  The `.MNX` extension is
+optional.
 
 ```powershell
-Start-VM -Name 'mini-os'           # start the VM
-vmconnect localhost 'mini-os'      # open the console
+Start-VM -Name 'MNOS16'           # start the VM
+vmconnect localhost 'MNOS16'      # open the console
 ```
 
 ## Project Structure
@@ -129,6 +131,7 @@ mini-os/
 ├── doc/
 │   ├── DESIGN.md             # Architecture & design document
 │   ├── DEBUGGING.md          # Debug infrastructure (serial, asserts, faults, canary)
+│   ├── EDITOR.md             # EDIT.MNX text editor design (gap buffer, dialogs, search)
 │   ├── LOADER.md             # Stage-2 loader design (A20, boot menu)
 │   ├── FILESYSTEM.md         # MNFS specification & FS.SYS architecture
 │   ├── BOOT-LAYOUT-RATIONALE.md  # Boot chain rationale (DOS/Windows/Linux comparisons)
@@ -169,6 +172,22 @@ mini-os/
 │   ├── fs/
 │   │   └── fs.asm             # Filesystem module — INT 0x81 API, MNFS directory cache
 │   ├── programs/
+│   │   ├── edit/              # EDIT.MNX — full-screen text editor
+│   │   │   ├── edit.asm       #   Entry point, constants, MNEX header
+│   │   │   ├── edit_keys.inc  #   Key dispatch (scancode → command)
+│   │   │   ├── edit_draw.inc  #   Screen rendering (menu, edit area, status)
+│   │   │   ├── edit_menu.inc  #   Drop-down menu system
+│   │   │   ├── edit_gap.inc   #   Gap buffer operations
+│   │   │   ├── edit_cursor.inc    # Cursor movement & viewport
+│   │   │   ├── edit_editing.inc   # Text manipulation (Enter, BS, Del)
+│   │   │   ├── edit_select.inc    # Selection & cursor↔gap sync
+│   │   │   ├── edit_clipboard.inc # Cut/Copy/Paste
+│   │   │   ├── edit_find.inc  #   Find/Replace/Replace All/GoTo
+│   │   │   ├── edit_dialog.inc    # Modal dialogs & file picker
+│   │   │   ├── edit_file.inc  #   File I/O (load/save)
+│   │   │   ├── edit_exit.inc  #   Exit handler
+│   │   │   ├── edit_msg.inc   #   Status messages
+│   │   │   └── edit_data.inc  #   State variables, strings, help text
 │   │   ├── hello.asm          # HELLO.MNX — first user-mode demo program
 │   │   └── mnmon.asm          # MNMON.MNX — interactive machine monitor (WinDbg-style)
 │   └── shell/
@@ -199,14 +218,15 @@ mini-os/
 │       ├── kernel.sys         # KERNEL — release (8 sectors)
 │       ├── shell.sys          # SHELL — release (18 sectors)
 │       ├── mm.sys             # MM — release (2 sectors)
+│       ├── edit.mnx            # EDIT — text editor (13 sectors)
 │       ├── hello.mnx          # HELLO — user program (1 sector)
 │       ├── mnmon.mnx          # MNMON — machine monitor (5 sectors)
 │       ├── fsd.sys            # FS — debug (8 sectors)
 │       ├── kerneld.sys        # KERNEL — debug (14 sectors)
 │       ├── shelld.sys         # SHELL — debug (18 sectors)
 │       ├── mmd.sys            # MM — debug (3 sectors)
-│       ├── mini-os.img        # 16 MB raw disk image
-│       └── mini-os.vhd        # Bootable VHD (single unified image)
+│       ├── MNOS16.img         # 16 MB raw disk image
+│       └── MNOS16.vhd        # Bootable VHD (single unified image)
 ├── build.bat                  # Build entry point
 ├── read-serial.bat            # Read serial debug output from VM
 ├── setup-vm.bat               # Hyper-V VM setup entry point
@@ -255,8 +275,9 @@ python -m pytest tests/ -v
 python -m pytest tests/ -v    # coverage is auto-generated on session finish
 ```
 
-**102 tests** across 6 modules: `shell_parse_args` (15), `run_parse_filename` (9),
-`strcmp` (11), `mm_allocator` (29), `fs_write` (26), `cmdmatch` (12).
+**160 tests** across 6 modules: `shell_parse_args` (15), `run_parse_filename` (9),
+`strcmp` (11), `mm_allocator` (29), `fs_write` (26), `cmdmatch` (12),
+`editor` (58).
 Tests run automatically in CI via GitHub Actions.
 
 **Coverage metrics:**
@@ -312,6 +333,10 @@ Additional deep-dive documents:
 - **[doc/MNMON.md](doc/MNMON.md)** — Machine monitor design: WinDbg-style commands
   (db/dw/eb/ew/g), Wozmon heritage, implementation as standalone .MNX program.
 
+- **[doc/EDITOR.md](doc/EDITOR.md)** — Text editor design: gap buffer internals,
+  modular .inc architecture, modal dialog system, Find/Replace engine, memory
+  layout, color scheme, key dispatch, and file I/O integration.
+
 ## Version History
 
 Each version is a tagged release you can checkout to see the project at that stage.
@@ -347,6 +372,7 @@ Each version is a tagged release you can checkout to see the project at that sta
 | `v0.9.9` | **Unit Test Framework** | Python + Unicorn Engine test harness; 64 tests across 4 modules; statement + branch coverage with Capstone; historical trend tracking (Chart.js); CI/CD test job; doc/TESTING.md |
 | `v0.9.10` | **HMA Heap + TPA Expansion** | Dynamic memory moved to HMA (~64 KB); TPA expanded 26→30 KB; auto-generated test constants; shell/MNMON HMA-aware |
 | `v0.9.11` | **MNFS Write Support** | FS write/delete/rename syscalls (INT 0x81 AH=0x06–0x08); tombstone deletion; shell `copy`, `del`, `ren` commands; `cmdmatch` prefix dispatcher; 102 unit tests (95% branch on FS); FS.SYS 3→5 sectors; SHELL.SYS 16→18 sectors |
+| `v0.9.12` | **Text Editor + MNOS16 Rename** | Full-screen editor (EDIT.MNX); gap buffer; modal dialogs; Find/Replace All (F4); menu hotkeys; project renamed to MNOS16; implicit execution (no built-in `edit` command) |
 
 ```cmd
 git checkout v0.1.0      # see the project at any prior milestone

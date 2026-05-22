@@ -1,5 +1,5 @@
 ; =============================================================================
-; HELLO.MNX — "Hello, world!" demo program for mini-os
+; HELLO.MNX — "Hello, world!" demo program for MNOS16
 ;
 ; This is the simplest possible user program.  It demonstrates:
 ;   - Standard MNEX header format (4-byte magic + 2-byte sector count)

@@ -1,5 +1,5 @@
 @echo off
-:: build.bat — Build mini-os (assembles all variants, creates unified VHD)
+:: build.bat — Build MNOS16 (assembles all variants, creates unified VHD)
 :: Usage: build.bat [clean | notest]
 
 setlocal

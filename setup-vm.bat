@@ -1,5 +1,5 @@
 @echo off
-:: setup-vm.bat — Create or update a Hyper-V VM for mini-os
+:: setup-vm.bat — Create or update a Hyper-V VM for MNOS16
 :: Must be run as Administrator.
 
 setlocal

@@ -1,5 +1,5 @@
 ; =============================================================================
-; Mini-OS Memory Manager (MM.SYS) — MNMM Heap Allocator with HMA Support
+; MNOS16 Memory Manager (MM.SYS) — MNMM Heap Allocator with HMA Support
 ;
 ; Loaded by KERNEL.SYS into memory at 0x2800.  Provides dynamic memory
 ; allocation services via INT 0x82 — fully decoupled from the kernel's

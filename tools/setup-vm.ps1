@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-    Create or update a Hyper-V Generation 1 VM for testing mini-os.
+    Create or update a Hyper-V Generation 1 VM for testing MNOS16.
 
 .DESCRIPTION
     - Prompts for VM name and file location (with sensible defaults).
     - Creates a Gen 1 VM with 32 MB RAM if it doesn't exist.
-    - Copies the latest build/mini-os.vhd into a HDD subfolder.
+    - Copies the latest build/MNOS16.vhd into a HDD subfolder as MNOS16.vhd.
     - On subsequent runs, replaces the VHD with the latest build and
       ensures the VM points to it — no manual steps needed.
 
@@ -44,11 +44,11 @@ Assert-HyperV
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $Root      = Split-Path -Parent $ScriptDir
-$SourceVhd = Join-Path $Root 'build\boot\mini-os.vhd'
+$SourceVhd = Join-Path $Root 'build\boot\MNOS16.vhd'
 
 if (-not (Test-Path $SourceVhd)) {
     # Try debug VHD
-    $DebugVhdEarly = Join-Path $Root 'build\boot\mini-os-debug.vhd'
+    $DebugVhdEarly = Join-Path $Root 'build\boot\MNOS16-debug.vhd'
     if (Test-Path $DebugVhdEarly) {
         $SourceVhd = $DebugVhdEarly
     } else {
@@ -67,14 +67,14 @@ function Read-WithDefault([string]$Prompt, [string]$Default) {
     return $input_val.Trim()
 }
 
-$DefaultVMPath = Join-Path ([Environment]::GetFolderPath('UserProfile')) 'HyperV\mini-os'
+$DefaultVMPath = 'C:\HyperV\MNOS16'
 
-$VMName = Read-WithDefault 'VM name' 'mini-os'
+$VMName = Read-WithDefault 'VM name' 'MNOS16'
 $VMPath = Read-WithDefault 'VM file location' $DefaultVMPath
 
 # --- Choose VHD variant (release or debug) -----------------------------------
-$ReleaseVhd = Join-Path $Root 'build\boot\mini-os.vhd'
-$DebugVhd   = Join-Path $Root 'build\boot\mini-os-debug.vhd'
+$ReleaseVhd = Join-Path $Root 'build\boot\MNOS16.vhd'
+$DebugVhd   = Join-Path $Root 'build\boot\MNOS16-debug.vhd'
 $hasRelease  = Test-Path $ReleaseVhd
 $hasDebug    = Test-Path $DebugVhd
 
@@ -97,7 +97,7 @@ if ($hasRelease -and $hasDebug) {
 
 # ---------- derived paths ---------------------------------------------------
 $HddDir = Join-Path $VMPath 'HDD'
-$TargetVhd = Join-Path $HddDir 'mini-os.vhd'
+$TargetVhd = Join-Path $HddDir 'MNOS16.vhd'
 
 # ---------- file helpers ----------------------------------------------------
 function Copy-LatestVhd {
@@ -144,8 +144,8 @@ if ($existingVM) {
     }
 
     # Ensure COM1 is configured as a named pipe (for serial debug output)
-    Set-VMComPort -VMName $VMName -Number 1 -Path '\\.\pipe\minios-serial'
-    Write-Step "COM1 → \\.\pipe\minios-serial"
+    Set-VMComPort -VMName $VMName -Number 1 -Path '\\.\pipe\MNOS16-SERIAL'
+    Write-Step "COM1 → \\.\pipe\MNOS16-SERIAL"
 
 } else {
     Write-Step "Creating new VM '$VMName'..."
@@ -172,8 +172,8 @@ if ($existingVM) {
     Set-VM -Name $VMName -CheckpointType Disabled
 
     # Configure COM1 as a named pipe (for serial debug output)
-    Set-VMComPort -VMName $VMName -Number 1 -Path '\\.\pipe\minios-serial'
-    Write-Step "COM1 → \\.\pipe\minios-serial"
+    Set-VMComPort -VMName $VMName -Number 1 -Path '\\.\pipe\MNOS16-SERIAL'
+    Write-Step "COM1 → \\.\pipe\MNOS16-SERIAL"
 
     Write-Step "VM '$VMName' created at $VMPath"
 }
@@ -187,15 +187,15 @@ Write-Host "  Path : $VMPath"
 Write-Host "  VHD  : $TargetVhd ($vhdLabel)"
 Write-Host "  RAM  : 32 MB"
 Write-Host "  Gen  : 1"
-Write-Host "  COM1 : \\.\pipe\minios-serial"
+Write-Host "  COM1 : \\.\pipe\MNOS16-SERIAL"
 Write-Host ''
 Write-Host 'Next steps:' -ForegroundColor Yellow
 Write-Host "  Start-VM -Name '$VMName'           # start from PowerShell"
 Write-Host "  vmconnect localhost '$VMName'       # open console window"
 Write-Host ''
 Write-Host 'To read serial debug output (debug builds only):' -ForegroundColor Yellow
-Write-Host '  Use PuTTY: Serial, \\.\pipe\minios-serial'
-Write-Host '  Or: [System.IO.Pipes.NamedPipeClientStream]::new(".", "minios-serial", "In")'
+Write-Host '  Use PuTTY: Serial, \\.\pipe\MNOS16-SERIAL'
+Write-Host '  Or: [System.IO.Pipes.NamedPipeClientStream]::new(".", "MNOS16-SERIAL", "In")'
 Write-Host ''
 Write-Host 'After rebuilding (.\build.ps1), just run this script again to update the VM.' -ForegroundColor Yellow
 Write-Host ''

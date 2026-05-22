@@ -1,5 +1,5 @@
 ; =============================================================================
-; mnfs.inc — MNFS (Mini-OS Flat Filesystem) constants
+; mnfs.inc — MNFS (MNOS16 Flat Filesystem) constants
 ;
 ; Defines the on-disk layout of the MNFS directory table, directory entry
 ; structure, file attributes, and INT 0x81 filesystem syscall numbers.

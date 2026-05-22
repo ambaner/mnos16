@@ -1,5 +1,5 @@
 ; =============================================================================
-; Mini-OS Volume Boot Record (VBR) - Stage 1 Loader
+; MNOS16 Volume Boot Record (VBR) - Stage 1 Loader
 ;
 ; This is the first-stage bootloader within the partition.  The MBR loads
 ; this code from the partition's first sector(s) into memory at 0x7C00.
@@ -38,7 +38,7 @@
     jmp short vbr_trampoline        ; 2 bytes: EB 0B — skip header fields
     nop                             ; 1 byte:  90    — standard filler
 
-vbr_magic       db 'MNOS'          ; 4-byte magic identifier for mini-os
+vbr_magic       db 'MNOS'          ; 4-byte magic identifier for MNOS16
 vbr_sectors     dw 2               ; Boot area = 2 sectors = 1 KB
 vbr_part_lba    dd 0               ; Partition start LBA (stamped at build)
 

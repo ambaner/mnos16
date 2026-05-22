@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Read serial debug output from a mini-os Hyper-V VM.
+    Read serial debug output from a MNOS16 Hyper-V VM.
 
 .DESCRIPTION
     Starts (or restarts) the VM, immediately connects to the COM1 named pipe,
@@ -13,14 +13,14 @@
     Press Ctrl+C to stop.
 
 .PARAMETER VMName
-    Hyper-V VM name (default: mini-os).
+    Hyper-V VM name (default: MNOS16).
 
 .PARAMETER PipeName
-    Named pipe to connect to (default: minios-serial).
+    Named pipe to connect to (default: MNOS16-SERIAL).
 
 .EXAMPLE
     .\read-serial.ps1                    # uses defaults
-    .\read-serial.ps1 -VMName my-os      # custom VM name
+    .\read-serial.ps1 -VMName my-vm      # custom VM name
 
 .NOTES
     Requires Hyper-V PowerShell module and admin privileges (to start the VM).
@@ -28,8 +28,8 @@
 #>
 #Requires -Version 7.0
 param(
-    [string]$VMName  = 'mini-os',
-    [string]$PipeName = 'minios-serial'
+    [string]$VMName  = 'MNOS16',
+    [string]$PipeName = 'MNOS16-SERIAL'
 )
 
 function Write-Serial([string]$msg) {
@@ -91,7 +91,7 @@ function Start-AndConnect {
 }
 
 # --- Main loop: auto-reconnect on disconnect --------------------------------
-Write-Serial "=== mini-os Serial Debug Reader ==="
+Write-Serial "=== MNOS16 Serial Debug Reader ==="
 Write-Host "  VM   : $VMName" -ForegroundColor Gray
 Write-Host "  Pipe : \\.\pipe\$PipeName" -ForegroundColor Gray
 Write-Host "  Press Ctrl+C to stop." -ForegroundColor Yellow

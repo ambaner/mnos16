@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Build script for mini-os.  Assembles all boot components (release + debug),
+    Build script for MNOS16.  Assembles all boot components (release + debug),
     creates a unified partitioned VHD with both kernel configurations.
 
 .DESCRIPTION
@@ -70,11 +70,11 @@ $KernelDbgBin = Join-Path $BuildDir 'kerneld.sys'
 $ShellDbgBin  = Join-Path $BuildDir 'shelld.sys'
 $MmDbgBin     = Join-Path $BuildDir 'mmd.sys'
 
-$RawImg     = Join-Path $BuildDir 'mini-os.img'
-$VhdOut     = Join-Path $BuildDir 'mini-os.vhd'
+$RawImg     = Join-Path $BuildDir 'MNOS16.img'
+$VhdOut     = Join-Path $BuildDir 'MNOS16.vhd'
 
 # ---------- helpers ---------------------------------------------------------
-function Write-Step([string]$msg) { Write-Host "[mini-os] $msg" -ForegroundColor Cyan }
+function Write-Step([string]$msg) { Write-Host "[MNOS16] $msg" -ForegroundColor Cyan }
 
 function Build-Binary {
     param(
@@ -172,12 +172,30 @@ Write-Step '--- User programs ---'
 $ProgramsDir = Join-Path $Root 'src\programs'
 $ProgramOut  = @()
 if (Test-Path $ProgramsDir) {
+    # Programs to skip (source kept as examples but not included in VHD)
+    $SkipPrograms = @('hello.asm')
+
     $programs = Get-ChildItem $ProgramsDir -Filter '*.asm'
     foreach ($prog in $programs) {
+        if ($prog.Name -in $SkipPrograms) { continue }
         $outName = [System.IO.Path]::GetFileNameWithoutExtension($prog.Name) + '.mnx'
         $outPath = Join-Path $BuildDir $outName
         Build-Binary -Name $outName.ToUpper() -AsmPath $prog.FullName -BinPath $outPath
         $ProgramOut += $outPath
+    }
+    # Also build programs in subdirectories (e.g., src/programs/edit/edit.asm)
+    $subdirs = Get-ChildItem $ProgramsDir -Directory
+    foreach ($subdir in $subdirs) {
+        $mainAsm = Join-Path $subdir.FullName ($subdir.Name + '.asm')
+        if (Test-Path $mainAsm) {
+            $outName = $subdir.Name + '.mnx'
+            $outPath = Join-Path $BuildDir $outName
+            # Skip if already built from top-level (avoids double-build during transition)
+            if ($outPath -notin $ProgramOut) {
+                Build-Binary -Name $outName.ToUpper() -AsmPath $mainAsm -BinPath $outPath
+                $ProgramOut += $outPath
+            }
+        }
     }
 }
 
@@ -217,7 +235,7 @@ Write-Host ''
 Write-Host 'To test in Hyper-V:' -ForegroundColor Yellow
 Write-Host "  build.bat           — build the OS"
 Write-Host "  setup-vm.bat        — create/update the VM"
-Write-Host "  Start-VM 'mini-os'  — boot it"
+Write-Host "  Start-VM 'MNOS16'   — boot it"
 Write-Host ''
 
 # ---------- unit tests -------------------------------------------------------

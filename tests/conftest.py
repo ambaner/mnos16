@@ -1,4 +1,4 @@
-"""pytest configuration and shared fixtures for mini-os unit tests."""
+"""pytest configuration and shared fixtures for MNOS16 unit tests."""
 
 import pytest
 from pathlib import Path
@@ -74,3 +74,21 @@ def parse_fname_bin():
 def cmdmatch_bin():
     """Assembled cmdmatch stub binary."""
     return assemble_stub("stub_cmdmatch")
+
+
+@pytest.fixture(scope="module")
+def edit_gap_bin():
+    """Assembled edit gap buffer stub binary."""
+    return assemble_stub("stub_edit_gap")
+
+
+@pytest.fixture(scope="module")
+def edit_find_bin():
+    """Assembled edit find/search stub binary."""
+    return assemble_stub("stub_edit_find")
+
+
+@pytest.fixture(scope="module")
+def edit_fname_bin():
+    """Assembled edit filename parser stub binary."""
+    return assemble_stub("stub_edit_fname")

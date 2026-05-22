@@ -25,6 +25,7 @@ shell_parse_args:
     ; Clear argc
     xor al, al
     mov [ARGV_ARGC], al
+    xor cx, cx                      ; CX = argc counter (zero before early exits)
 
     ; SI = source (raw args), DI = destination (storage area)
     mov si, [SHELL_ARGS_PTR]
@@ -34,7 +35,6 @@ shell_parse_args:
     je .spa_done                    ; Empty string → argc=0
 
     mov di, ARGV_STORAGE            ; DI = next free byte in storage
-    xor cx, cx                      ; CX = argc counter
 
 .spa_skip_spaces:
     lodsb                           ; AL = next char from source

@@ -1,6 +1,6 @@
 syscall_handler:
     ; --- Stack canary check (debug only) -------------------------------------
-    ; Verify the canary at 0x7000 is intact before dispatching.  This catches
+    ; Verify the canary at 0x7400 is intact before dispatching.  This catches
     ; stack overflows that occurred during the previous syscall handler or in
     ; user-mode code between syscalls.  CANARY_CHECK preserves all registers
     ; and FLAGS, so AH (function number) and all arguments are untouched.

@@ -1,5 +1,5 @@
 ; =============================================================================
-; Mini-OS Filesystem Module (FS.SYS) - MNFS Driver
+; MNOS16 Filesystem Module (FS.SYS) - MNFS Driver
 ;
 ; Loaded by KERNEL.SYS into memory at 0x0800 (reusing LOADER.SYS's slot).
 ; Provides filesystem services via INT 0x81 — fully decoupled from the
@@ -460,8 +460,10 @@ fs_syscall_handler:
     pop di                          ; DI → matched entry
     pop cx                          ; Discard count
 
-    ; Read sectors BEFORE loading EDI (which clobbers DI)
+    ; Read file metadata BEFORE loading EDI (which clobbers DI)
     mov cx, [es:di + MNFS_ENT_SECTORS]
+    mov eax, [es:di + MNFS_ENT_BYTES]  ; EAX = file size in bytes
+    mov [cs:.rf_bytes], eax
     mov edi, [es:di + MNFS_ENT_START]
     pop es                          ; Restore caller's ES
 
@@ -519,11 +521,12 @@ fs_syscall_handler:
     pop si
 %endif
 
-    ; Success
+    ; Success — return AX=bytes, CX=sectors
     mov cx, [cs:.rf_actual]
+    mov ax, [cs:.rf_bytes]          ; AX = file size in bytes (low 16 bits)
     pop bx
     pop di
-    pop ax
+    add sp, 2                       ; Discard saved AX (replaced with byte count)
     pop dx
     jmp fs_iret_cf_clear
 
@@ -563,6 +566,7 @@ fs_syscall_handler:
 .rf_buf_seg:  dw 0
 .rf_max:      dw 0
 .rf_actual:   dw 0
+.rf_bytes:    dd 0
 
 ; Local DAP for direct INT 0x13 (avoids nested INT 0x80)
 .rf_dap:
