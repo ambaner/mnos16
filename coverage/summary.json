@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-21T17:20:34.039171+00:00",
-  "overall_coverage": 30.5,
-  "total_addresses": 2173,
-  "hit_addresses": 662,
-  "branch_coverage": 90.8,
-  "branch_outcomes_total": 184,
-  "branch_outcomes_covered": 167,
+  "timestamp": "2026-05-22T19:52:28.127975+00:00",
+  "overall_coverage": 33.6,
+  "total_addresses": 2779,
+  "hit_addresses": 933,
+  "branch_coverage": 90.7,
+  "branch_outcomes_total": 258,
+  "branch_outcomes_covered": 234,
   "routines": {
     "cmdmatch": {
       "coverage": 61.9,
@@ -14,6 +14,30 @@
       "branch_coverage": 100.0,
       "branches_total": 4,
       "branches_full": 4
+    },
+    "edit_find": {
+      "coverage": 51.9,
+      "total": 158,
+      "hit": 82,
+      "branch_coverage": 100.0,
+      "branches_total": 6,
+      "branches_full": 6
+    },
+    "edit_fname": {
+      "coverage": 37.0,
+      "total": 119,
+      "hit": 44,
+      "branch_coverage": 90.9,
+      "branches_total": 11,
+      "branches_full": 9
+    },
+    "edit_gap": {
+      "coverage": 44.1,
+      "total": 329,
+      "hit": 145,
+      "branch_coverage": 87.5,
+      "branches_total": 20,
+      "branches_full": 15
     },
     "fs_write": {
       "coverage": 23.4,
