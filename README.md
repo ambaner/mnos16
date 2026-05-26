@@ -1,7 +1,7 @@
 # MNOS16
 
 A minimalistic 16-bit operating system built from scratch in x86 assembly —
-currently at **v0.9.12**.  Features a multi-stage boot loader, a
+currently at **v0.9.13**.  Features a multi-stage boot loader, a
 microkernel-style architecture with separate modules for filesystem and memory
 management, and an interactive shell that can load and run user programs.
 Targets Hyper-V Gen 1 VMs with a unified VHD containing both Release and Debug
@@ -90,7 +90,7 @@ VHD — no need to rebuild or swap images.
 After the boot chain completes, you'll see the shell:
 
 ```
-  MNOS v0.9.12 [Release]
+  MNOS v0.9.13 [Release]
 
 mnos:\>
 ```
@@ -99,7 +99,6 @@ Type `help` for a list of commands:
 
 | Command | Description |
 |---------|-------------|
-| `sysinfo` | 5 pages of hardware info (CPU/CPUID, memory/E820, BDA, video/disk/EDD, IVT) |
 | `mem` | Memory diagnostics — conventional/extended RAM, A20 gate, layout, E820 map |
 | `dir` | List files on disk (name, type, sectors, bytes) |
 | `copy` | Copy a file (`copy SRC.EXT DST.EXT`) |
@@ -111,8 +110,8 @@ Type `help` for a list of commands:
 | `reboot` | Warm reboot |
 
 Any unrecognized command is treated as a program name — e.g., typing `edit`
-runs `EDIT.MNX`, typing `mnmon` runs `MNMON.MNX`.  The `.MNX` extension is
-optional.
+runs `EDIT.MNX`, typing `sysinfo` runs `SYSINFO.MNX`, typing `mnmon` runs
+`MNMON.MNX`.  The `.MNX` extension is optional.
 
 ```powershell
 Start-VM -Name 'MNOS16'           # start the VM
@@ -188,6 +187,10 @@ mini-os/
 │   │   │   ├── edit_exit.inc  #   Exit handler
 │   │   │   ├── edit_msg.inc   #   Status messages
 │   │   │   └── edit_data.inc  #   State variables, strings, help text
+│   │   ├── sysinfo/           # SYSINFO.MNX — system information (5 pages)
+│   │   │   ├── sysinfo.asm    #   Entry point, MNEX header (6 sectors)
+│   │   │   ├── sysinfo_code.inc   # Display logic (CPU, memory, BDA, disk, IVT)
+│   │   │   └── sysinfo_data.inc   # Strings & runtime buffers
 │   │   ├── hello.asm          # HELLO.MNX — first user-mode demo program
 │   │   └── mnmon.asm          # MNMON.MNX — interactive machine monitor (WinDbg-style)
 │   └── shell/
@@ -197,7 +200,6 @@ mini-os/
 │       ├── shell_cmd_fs.inc       # File commands (copy, del, ren)
 │       ├── shell_cmd_mem.inc      # mem command (memory diagnostics)
 │       ├── shell_cmd_run.inc      # Implicit program execution (loader + validation)
-│       ├── shell_cmd_sysinfo.inc  # sysinfo command (5-page hardware info)
 │       ├── shell_parse_args.inc   # Argument tokenizer (Layer 2: argc/argv)
 │       ├── shell_readline.inc     # Input handling + utility subroutines (strcmp, cmdmatch)
 │       └── shell_data.inc         # String constants + runtime data buffers
@@ -216,14 +218,14 @@ mini-os/
 │       ├── loader.sys         # LOADER (3 sectors, shared)
 │       ├── fs.sys             # FS — release (5 sectors)
 │       ├── kernel.sys         # KERNEL — release (8 sectors)
-│       ├── shell.sys          # SHELL — release (18 sectors)
+│       ├── shell.sys          # SHELL — release (13 sectors)
 │       ├── mm.sys             # MM — release (2 sectors)
 │       ├── edit.mnx            # EDIT — text editor (13 sectors)
-│       ├── hello.mnx          # HELLO — user program (1 sector)
+│       ├── sysinfo.mnx        # SYSINFO — system info (6 sectors)
 │       ├── mnmon.mnx          # MNMON — machine monitor (5 sectors)
 │       ├── fsd.sys            # FS — debug (8 sectors)
 │       ├── kerneld.sys        # KERNEL — debug (14 sectors)
-│       ├── shelld.sys         # SHELL — debug (18 sectors)
+│       ├── shelld.sys         # SHELL — debug (13 sectors)
 │       ├── mmd.sys            # MM — debug (3 sectors)
 │       ├── MNOS16.img         # 16 MB raw disk image
 │       └── MNOS16.vhd        # Bootable VHD (single unified image)
@@ -248,6 +250,7 @@ mini-os/
 │   │   └── stub_strcmp.asm
 │   ├── test_cmdmatch.py       # 12 tests for cmdmatch (command prefix matching)
 │   ├── test_fs_write.py       # 26 tests for FS write/delete/rename
+│   ├── test_memory_layout.py  # 16 tests for memory layout consistency
 │   ├── test_mm.py             # 29 tests for memory manager
 │   ├── test_parse_args.py     # 15 tests for shell_parse_args
 │   ├── test_parse_filename.py # 9 tests for run_parse_filename
@@ -275,9 +278,9 @@ python -m pytest tests/ -v
 python -m pytest tests/ -v    # coverage is auto-generated on session finish
 ```
 
-**160 tests** across 6 modules: `shell_parse_args` (15), `run_parse_filename` (9),
+**176 tests** across 7 modules: `shell_parse_args` (15), `run_parse_filename` (9),
 `strcmp` (11), `mm_allocator` (29), `fs_write` (26), `cmdmatch` (12),
-`editor` (58).
+`editor` (58), `memory_layout` (16).
 Tests run automatically in CI via GitHub Actions.
 
 **Coverage metrics:**
@@ -373,6 +376,7 @@ Each version is a tagged release you can checkout to see the project at that sta
 | `v0.9.10` | **HMA Heap + TPA Expansion** | Dynamic memory moved to HMA (~64 KB); TPA expanded 26→30 KB; auto-generated test constants; shell/MNMON HMA-aware |
 | `v0.9.11` | **MNFS Write Support** | FS write/delete/rename syscalls (INT 0x81 AH=0x06–0x08); tombstone deletion; shell `copy`, `del`, `ren` commands; `cmdmatch` prefix dispatcher; 102 unit tests (95% branch on FS); FS.SYS 3→5 sectors; SHELL.SYS 16→18 sectors |
 | `v0.9.12` | **Text Editor + MNOS16 Rename** | Full-screen editor (EDIT.MNX); gap buffer; modal dialogs; Find/Replace All (F4); menu hotkeys; project renamed to MNOS16; implicit execution (no built-in `edit` command) |
+| `v0.9.13` | **Sysinfo Extraction + Layout Tightening** | `sysinfo` extracted from shell into standalone SYSINFO.MNX (6 sectors); shell shrunk 19→13 sectors; kernel relocated 0x5800→0x5000; stack doubled 2→4 KB; 16 memory-layout consistency tests; 176 total tests |
 
 ```cmd
 git checkout v0.1.0      # see the project at any prior milestone

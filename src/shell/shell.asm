@@ -17,7 +17,6 @@
 ;   Offset 4: dw N     Shell size in sectors
 ;
 ; Available commands:
-;   sysinfo  - Display 5 pages of system information
 ;   mem      - Detailed memory info and layout
 ;   ver      - Show version and build info
 ;   help     - List available commands
@@ -43,7 +42,7 @@
 ; SHELL HEADER
 ; =============================================================================
 shell_magic     db 'MNEX'           ; Magic identifier — user-mode executable
-shell_sectors   dw 19               ; Shell size in sectors (updated as needed)
+shell_sectors   dw 13               ; Shell size in sectors (updated as needed)
 
 ; =============================================================================
 ; SHELL INIT
@@ -91,12 +90,6 @@ shell_prompt:
     ; Empty input (just pressed Enter) -> re-prompt
     cmp byte [cmd_buf], 0
     je shell_prompt
-
-    ; "sysinfo"
-    mov si, cmd_buf
-    mov di, str_sysinfo
-    call strcmp
-    je cmd_sysinfo
 
     ; "help"
     mov si, cmd_buf
@@ -162,7 +155,6 @@ shell_prompt:
 %include "shell_cmd_run.inc"
 %include "shell_parse_args.inc"
 %include "shell_cmd_mem.inc"
-%include "shell_cmd_sysinfo.inc"
 
 %include "shell_readline.inc"
 
@@ -171,4 +163,4 @@ shell_prompt:
 ; =============================================================================
 ; PADDING — fill to sector boundary (16 sectors = 8192 bytes)
 ; =============================================================================
-times (19 * 512) - ($ - $$) db 0
+times (13 * 512) - ($ - $$) db 0

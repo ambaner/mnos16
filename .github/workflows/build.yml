@@ -37,11 +37,12 @@ jobs:
         $mm  = "build\boot\mm.sys"
         $mon = "build\boot\mnmon.mnx"
         $edt = "build\boot\edit.mnx"
+        $sys = "build\boot\sysinfo.mnx"
         $img = "build\boot\MNOS16.img"
         $vhd = "build\boot\MNOS16.vhd"
 
         # Check all files exist
-        foreach ($f in @($mbr, $vbr, $ldr, $fsm, $krn, $shl, $mm, $mon, $edt, $img, $vhd)) {
+        foreach ($f in @($mbr, $vbr, $ldr, $fsm, $krn, $shl, $mm, $mon, $edt, $sys, $img, $vhd)) {
             if (-not (Test-Path $f)) { throw "$f not found" }
         }
 
@@ -142,6 +143,16 @@ jobs:
             throw "MNMON binary is $($monBytes.Length / 512) sectors but header declares $monSectors"
         }
 
+        # SYSINFO.MNX: multiple of 512 bytes + MNEX magic
+        $sysBytes = [System.IO.File]::ReadAllBytes($sys)
+        if (($sysBytes.Length % 512) -ne 0) { throw "sysinfo.mnx is $($sysBytes.Length) bytes (not a multiple of 512)" }
+        $sysMagic = [System.Text.Encoding]::ASCII.GetString($sysBytes, 0, 4)
+        if ($sysMagic -ne 'MNEX') { throw "SYSINFO magic is '$sysMagic' (expected 'MNEX')" }
+        $sysSectors = [BitConverter]::ToUInt16($sysBytes, 4)
+        if ($sysSectors -ne ($sysBytes.Length / 512)) {
+            throw "SYSINFO binary is $($sysBytes.Length / 512) sectors but header declares $sysSectors"
+        }
+
         # Disk image: partition table present
         $imgBytes = [System.IO.File]::ReadAllBytes($img)
         if ($imgBytes[0x1BE] -ne 0x80) { throw "Partition 1 not marked active in disk image" }
@@ -165,6 +176,7 @@ jobs:
         Write-Host "  mm.sys       : $($mmBytes.Length) bytes ($mmSectors sectors), magic MNMM"
         Write-Host "  edit.mnx     : $($edtBytes.Length) bytes ($edtSectors sectors), magic MNEX"
         Write-Host "  mnmon.mnx    : $($monBytes.Length) bytes ($monSectors sectors), magic MNEX"
+        Write-Host "  sysinfo.mnx  : $($sysBytes.Length) bytes ($sysSectors sectors), magic MNEX"
         Write-Host "  MNOS16.img   : $($imgBytes.Length) bytes, partition table OK"
         Write-Host "  MNOS16.vhd   : $($vhdBytes.Length) bytes, VHD footer OK"
 
@@ -182,6 +194,7 @@ jobs:
           build/boot/mm.sys
           build/boot/edit.mnx
           build/boot/mnmon.mnx
+          build/boot/sysinfo.mnx
           build/boot/MNOS16.vhd
         retention-days: 30
 

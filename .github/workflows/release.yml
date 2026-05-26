@@ -42,6 +42,7 @@ jobs:
         Copy-Item "build\boot\mm.sys"        "$stagingDir\distro\mbr\"
         Copy-Item "build\boot\edit.mnx"      "$stagingDir\distro\mbr\"
         Copy-Item "build\boot\mnmon.mnx"     "$stagingDir\distro\mbr\"
+        Copy-Item "build\boot\sysinfo.mnx"   "$stagingDir\distro\mbr\"
         Copy-Item "build\boot\MNOS16.vhd"    "$stagingDir\vhd\"
         Copy-Item "tools\setup-vm.ps1"        "$stagingDir\setup-vm\"
         Copy-Item "tools\create-vhd.ps1"      "$stagingDir\tools\"
@@ -69,8 +70,8 @@ jobs:
         (A20 enablement), which loads KERNEL.SYS (INT 0x80 syscall interface),
         which loads FS.SYS (filesystem), MM.SYS (memory manager), and
         SHELL.SYS (interactive shell).
-        Commands: sysinfo, mem, ver, help, cls, dir, copy, del, ren, reboot.
-        User programs: edit (text editor), mnmon (machine monitor).
+        Commands: mem, ver, help, cls, dir, copy, del, ren, reboot.
+        User programs: sysinfo, edit (text editor), mnmon (machine monitor).
 
         CONTENTS
         --------
@@ -79,10 +80,11 @@ jobs:
         distro\mbr\loader.sys   LOADER.SYS (3 sectors)
         distro\mbr\fs.sys       FS.SYS (5 sectors)
         distro\mbr\kernel.sys   KERNEL.SYS (8 sectors)
-        distro\mbr\shell.sys    SHELL.SYS (19 sectors)
+        distro\mbr\shell.sys    SHELL.SYS (13 sectors)
         distro\mbr\mm.sys       MM.SYS (2 sectors)
         distro\mbr\edit.mnx     EDIT.MNX — full-screen text editor
         distro\mbr\mnmon.mnx    MNMON.MNX — interactive machine monitor
+        distro\mbr\sysinfo.mnx  SYSINFO.MNX — system information (5 pages)
         vhd\MNOS16.vhd        16 MB fixed VHD — ready to boot in Hyper-V
         setup-vm\             Scripts to create/update a Hyper-V VM
         tools\                VHD creation tools (if you rebuild from source)

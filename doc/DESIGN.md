@@ -400,7 +400,6 @@ The shell is a simple read-eval-print loop:
 
 | Command | Description |
 |---------|-------------|
-| `sysinfo` | Display 5 pages of system information (CPU, memory, BDA, video/disk, IVT) |
 | `mem` | Detailed memory info: conventional/extended RAM, A20 status, layout, E820 map |
 | `dir` | List files on disk: name, type (SYS/EXE), sectors, bytes, total summary |
 | `ver` | Version, architecture, assembler, platform, boot chain, disk, source URL |
@@ -412,10 +411,11 @@ Unknown commands are treated as program names — the shell searches for a
 matching `.MNX` file and executes it if found (see
 [PROGRAM-LOADER.md](PROGRAM-LOADER.md)).
 
-### 3.3 `sysinfo` Command
+### 3.3 `sysinfo` Program (SYSINFO.MNX)
 
-Displays five pages of system information, with "Press any key..." between each
-page and a screen clear before each new page:
+A standalone user program (6 sectors, 3 KB) that displays five pages of system
+information, with "Press any key..." between each page and a screen clear before
+each new page.  Run from the shell prompt by typing `sysinfo`.
 
 | Page | Title | Information |
 |------|-------|-------------|

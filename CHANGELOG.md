@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.9.13] - 2026-05-26
+
+### Added
+- **SYSINFO.MNX** — standalone user program (6 sectors, 3 KB) displaying 5 pages
+  of system information (CPU/CPUID, memory/E820, BDA, video/disk/EDD, IVT).
+  Previously a built-in shell command; now loaded via implicit execution.
+- **Memory layout consistency tests** — 16 new tests in `test_memory_layout.py`
+  validating component non-overlap, stack bounds, TPA placement, and metadata
+  positioning. Catches future layout mistakes at build time.
+
+### Changed
+- **`sysinfo` extracted from shell** — no longer a built-in command; type
+  `sysinfo` at the prompt to run `SYSINFO.MNX` (same UX, smaller shell)
+- **SHELL.SYS shrunk** from 19 → 13 sectors (freed 3 KB by removing sysinfo)
+- **Memory layout tightened** — KERNEL.SYS relocated from 0x5800 to 0x5000;
+  stack canary moved from 0x7400 to 0x6C00; usable stack doubled from ~2 KB
+  to ~4 KB; eliminates dead space between shell and kernel
+- Shell max allocation reduced from 20 to 16 sectors (still 3 sectors of
+  headroom above current 13)
+- Total unit tests: 160 → 176
+
+---
+
 ## [0.9.12] - 2026-05-22
 
 ### Added
@@ -40,7 +63,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - COM pipe: `\\.\pipe\MNOS16-SERIAL` (was `\\.\pipe\minios-serial`)
   - VM path default: `C:\HyperV\MNOS16`
   - Build banner: `[MNOS16]`
-- SHELL.SYS sector count: 18 → 19 (updated help text)
 - HELLO.MNX removed from VHD (source remains as example)
 
 ---

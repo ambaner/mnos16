@@ -3,34 +3,34 @@
 ;
 ; PURPOSE:
 ;   Detects stack overflow by placing a known sentinel value ("canary") at the
-;   bottom of the stack zone (0x7400).  If any code grows the stack past this
+;   bottom of the stack zone (0x6C00).  If any code grows the stack past this
 ;   point, the canary is overwritten and the next check catches it.
 ;
-;   Without this, stack overflow silently corrupts kernel code/data at 0x5800,
+;   Without this, stack overflow silently corrupts kernel code/data at 0x5000,
 ;   producing extremely difficult-to-diagnose bugs (wrong syscall behavior,
 ;   random crashes, data corruption).
 ;
 ; HOW IT WORKS:
-;   1. canary_init  — called once at boot, writes 0xDEAD 0xDEAD at 0x7400.
+;   1. canary_init  — called once at boot, writes 0xDEAD 0xDEAD at 0x6C00.
 ;   2. canary_check — called on every syscall entry/exit, verifies both words
 ;                     are intact.  If either is corrupted → fatal halt.
 ;
 ; MEMORY LAYOUT:
-;   0x7400  ┌──────────────┐
+;   0x6C00  ┌──────────────┐
 ;           │ 0xDEAD       │  ← canary word 1 (first to be overwritten)
-;   0x7402  ├──────────────┤
+;   0x6C02  ├──────────────┤
 ;           │ 0xDEAD       │  ← canary word 2 (redundancy)
-;   0x7404  ├──────────────┤
+;   0x6C04  ├──────────────┤
 ;           │              │
 ;           │  Stack zone  │  ← SP grows downward from 0x7BFF
-;           │  (~2044 B)   │
+;           │  (~4092 B)   │
 ;           │              │
 ;   0x7C00  └──────────────┘  ← Initial SP (set by MBR)
 ;
 ; ADDRESSING:
 ;   All canary reads/writes use the SS: segment override.  In MNOS16,
-;   SS is always 0x0000 (set by MBR, never changed), so SS:0x7400 is
-;   linear address 0x7400.  Using SS: makes the intent explicit and avoids
+;   SS is always 0x0000 (set by MBR, never changed), so SS:0x6C00 is
+;   linear address 0x6C00.  Using SS: makes the intent explicit and avoids
 ;   depending on DS (which may be changed by some components).
 ;
 ; REGISTER PRESERVATION:
@@ -41,7 +41,7 @@
 ; DEBUG-ONLY:
 ;   Both routines are wrapped in %ifdef DEBUG.  In release builds, the
 ;   CANARY_INIT and CANARY_CHECK macros expand to nothing (0 bytes).
-;   The canary address at 0x7400 is never written or read in release.
+;   The canary address at 0x6C00 is never written or read in release.
 ;
 ; PREREQUISITES:
 ;   - memory.inc must be %included (provides STACK_CANARY_ADDR/VALUE)
@@ -75,7 +75,7 @@ canary_init:
     mov word [ss:STACK_CANARY_ADDR + 2], STACK_CANARY_VALUE
 
     ; Log to serial so the developer knows the canary is active
-    DBG "KERNEL: stack canary planted at 0x7400 (0xDEAD 0xDEAD)"
+    DBG "KERNEL: stack canary planted at 0x6C00 (0xDEAD 0xDEAD)"
     ret
 
 ; =============================================================================
@@ -107,12 +107,12 @@ canary_check:
     ; Save FLAGS so our cmp doesn't destroy the caller's CF/ZF/etc.
     pushf
 
-    ; Check canary word 1 (0x7400) — this is the first byte the stack
+    ; Check canary word 1 (0x6C00) — this is the first byte the stack
     ; would overwrite when growing past the safe zone.
     cmp word [ss:STACK_CANARY_ADDR], STACK_CANARY_VALUE
     jne .canary_dead
 
-    ; Check canary word 2 (0x7402) — redundancy: catches partial
+    ; Check canary word 2 (0x6C02) — redundancy: catches partial
     ; overwrites that only corrupt 2 of the 4 canary bytes.
     cmp word [ss:STACK_CANARY_ADDR + 2], STACK_CANARY_VALUE
     jne .canary_dead
@@ -124,7 +124,7 @@ canary_check:
 ; =============================================================================
 ; .canary_dead — Fatal handler: stack overflow detected
 ;
-; At this point the stack has grown past 0x7404 and corrupted the canary.
+; At this point the stack has grown past 0x6C04 and corrupted the canary.
 ; The stack itself may be partially corrupted, so we keep our actions
 ; minimal and avoid deep call chains.
 ;
@@ -171,9 +171,9 @@ canary_check:
 ; where to look in a hex dump.
 .canary_msg:
     db 13, 10
-    db '*** STACK OVERFLOW: canary at 0x7400 destroyed! ***', 13, 10
-    db '    Stack grew past safe limit (0x7404).', 13, 10
-    db '    Kernel/data below 0x7400 may be corrupted.', 13, 10, 0
+    db '*** STACK OVERFLOW: canary at 0x6C00 destroyed! ***', 13, 10
+    db '    Stack grew past safe limit (0x6C04).', 13, 10
+    db '    Kernel/data below 0x6C00 may be corrupted.', 13, 10, 0
 
 %endif ; DEBUG
 

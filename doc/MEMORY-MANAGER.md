@@ -868,7 +868,7 @@ This tells the caller the maximum they can allocate (AX) and total available
     ; Print "Insufficient memory" message
 ```
 
-**Shell integration** — The `mem` or `sysinfo` command could use this to
+**Shell integration** — The `mem` command or `SYSINFO.MNX` program could use this to
 display heap statistics:
 
 ```

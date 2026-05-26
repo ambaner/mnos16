@@ -1,7 +1,7 @@
 # Unit Testing — Design Document
 
-**Version:** 2.0  
-**Status:** Tier 1 implemented (v0.9.12); 160 tests across 9 modules; branch coverage + trend tracking  
+**Version:** 2.1  
+**Status:** Tier 1 implemented (v0.9.13); 176 tests across 10 modules; branch coverage + trend tracking  
 **Prerequisite:** Python 3.9+, `pip install -r tests/requirements.txt` (unicorn, pytest, capstone)
 
 ---
@@ -183,6 +183,7 @@ tests/
 ├── test_edit_gap.py         # 27 tests for gap buffer operations
 ├── test_edit_find.py        # 19 tests for search/char_at_offset/atoi
 ├── test_edit_fname.py       # 12 tests for editor 8.3 filename parsing
+├── test_memory_layout.py    # 16 tests for memory layout consistency (pure Python)
 └── requirements.txt         # unicorn, pytest, capstone
 ```
 
@@ -382,7 +383,8 @@ The coverage report generates a JSON file consumed by shields.io:
 | `edit_gap.inc` | `gap insert/delete/move` | 27 | ✅ Tested |
 | `edit_find.inc` | `search/char_at/atoi` | 19 | ✅ Tested |
 | `edit_file.inc` | `ed_parse_8_3` | 12 | ✅ Tested |
-| | **Total** | **160** | |
+| `memory.inc` | layout consistency (pure Python) | 16 | ✅ Tested |
+| | **Total** | **176** | |
 
 ### 6.2 Future Testable Code (Tier 2)
 

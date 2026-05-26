@@ -7,8 +7,8 @@
 
 ; Numeric version (returned by SYS_GET_VERSION: AH=major, AL=minor)
 OS_VERSION_MAJOR  equ 0x09            ; v0.9
-OS_VERSION_MINOR  equ 0x0C            ; .12
+OS_VERSION_MINOR  equ 0x0D            ; .13
 OS_VERSION        equ (OS_VERSION_MAJOR << 8) | OS_VERSION_MINOR
 
 ; String version — use in db directives: db '  MNOS ', OS_VERSION_STR, ' ', 0
-%define OS_VERSION_STR 'v0.9.12'
+%define OS_VERSION_STR 'v0.9.13'

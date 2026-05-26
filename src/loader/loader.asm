@@ -4,7 +4,7 @@
 ; Loaded by the VBR into memory at 0x0800.  Responsibilities:
 ;   1. Enable the A20 gate (3 fallback methods)
 ;   2. Present a boot menu (release / debug kernel selection)
-;   3. Find the selected kernel in the MNFS directory and load it at 0x5800
+;   3. Find the selected kernel in the MNFS directory and load it at 0x5000
 ;   4. Transfer control to the kernel
 ;
 ; The Boot Info Block (BIB) at 0x0600 is populated by the VBR and extended
@@ -217,7 +217,7 @@ boot_menu:
 ; LOAD KERNEL
 ;
 ; Find the selected kernel variant in the MNFS directory table, load it
-; at 0x5800, then jump to it.  SI is set by boot_menu to the correct
+; at 0x5000, then jump to it.  SI is set by boot_menu to the correct
 ; 11-byte 8.3 filename (fname_kernel or fname_kerneld).
 ; =============================================================================
 load_kernel:

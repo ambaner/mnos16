@@ -198,11 +198,12 @@ runtime because the shell and all user-mode programs call into it via INT 0x80.
 The kernel loads SHELL.SYS to linear address 0x3000 (segment 0x0000, offset
 0x3000).  The shell is assembled with `[ORG 0x3000]`.
 
-**Contents** (v0.6.0): Command loop, all shell commands (sysinfo, mem, dir, ver,
-help, cls, reboot), thin syscall wrappers (hardware via INT 0x80, filesystem via
-INT 0x81), strcmp, readline, string constants, and runtime data buffers.
+**Contents** (v0.9.13): Command loop, shell commands (mem, dir, ver, help, cls,
+reboot, copy, del, ren), implicit program execution (loads .MNX files), thin
+syscall wrappers (hardware via INT 0x80, filesystem via INT 0x81), strcmp,
+readline, argument parser, string constants, and runtime data buffers.
 
-**Current size**: 18 sectors (9216 bytes), ending at 0x47FF.  **Maximum**:
+**Current size**: 13 sectors (6656 bytes), ending at 0x49FF.  **Maximum**:
 16 sectors (8192 bytes), ending at 0x4FFF.  The kernel at 0x5000 sets the
 upper boundary.
 
@@ -295,8 +296,8 @@ How deep does the stack actually go?  In mini-os's real-mode code:
 | INT 15h (memory services) | ~10–20 B | BIOS internal use |
 | INT 10h (video services) | ~10–20 B | BIOS internal use |
 
-**Deepest call chain** (estimated): `shell_loop` → `cmd_sysinfo` →
-`show_cpu_page` → `print_hex16` → `puthex8` → `putc` → `INT 10h`.
+**Deepest call chain** (estimated): `shell_loop` → `cmd_mem` →
+`show_e820_map` → `print_hex16` → `puthex8` → `putc` → `INT 10h`.
 That's ~6 levels of calls (12 B return addresses) plus register saves
 (~20 B) plus BIOS internals (~40 B) = **~72 bytes**.
 
