@@ -44,6 +44,7 @@
         .back-link { display: inline-block; margin-bottom: 1rem; color: var(--text-muted); text-decoration: none; font-size: 0.9rem; }
         .back-link:hover { color: var(--accent); }
         @media (max-width: 640px) { .hero h1 { font-size: 2rem; } .grid { grid-template-columns: 1fr; } .hero-preview { margin: 1.5rem 1rem 0; } }
+    .coverage-badge { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600; font-size: 0.9rem; margin-bottom: 1rem; } .coverage-green { background: #dcfce7; color: #16a34a; } .coverage-yellow { background: #fef3c7; color: #d97706; } .coverage-red { background: #fee2e2; color: #dc2626; }
     </style>
 </head>
 <body>
@@ -174,5 +175,17 @@
     <footer>
         <p>Built with &#x2764;&#xFE0F; by <a href="https://github.com/ambaner">ambaner</a> &middot; <a href="https://github.com/ambaner/mnos16/blob/main/LICENSE">MIT License</a></p>
     </footer>
+<script>
+fetch('coverage/badge.json')
+  .then(r => r.json())
+  .then(data => {
+    const el = document.getElementById('coverage-badge');
+    el.textContent = data.message;
+    el.className = 'coverage-badge coverage-' + data.color;
+  })
+  .catch(() => {
+    document.getElementById('coverage-badge').style.display = 'none';
+  });
+</script>
 </body>
 </html>
