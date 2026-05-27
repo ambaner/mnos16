@@ -228,5 +228,52 @@
         "branch": 100.0
       }
     }
+  },
+  {
+    "timestamp": "2026-05-27T01:33:35.241936+00:00",
+    "statement_coverage": 33.6,
+    "branch_coverage": 90.7,
+    "total_addresses": 2779,
+    "hit_addresses": 933,
+    "branch_outcomes_total": 258,
+    "branch_outcomes_covered": 234,
+    "routines": {
+      "cmdmatch": {
+        "stmt": 61.9,
+        "branch": 100.0
+      },
+      "edit_find": {
+        "stmt": 51.9,
+        "branch": 100.0
+      },
+      "edit_fname": {
+        "stmt": 37.0,
+        "branch": 90.9
+      },
+      "edit_gap": {
+        "stmt": 44.1,
+        "branch": 87.5
+      },
+      "fs_write": {
+        "stmt": 23.4,
+        "branch": 94.7
+      },
+      "mm_allocator": {
+        "stmt": 39.4,
+        "branch": 84.1
+      },
+      "shell_parse_args": {
+        "stmt": 52.7,
+        "branch": 89.3
+      },
+      "run_parse_filename": {
+        "stmt": 42.8,
+        "branch": 87.5
+      },
+      "strcmp": {
+        "stmt": 69.2,
+        "branch": 100.0
+      }
+    }
   }
 ]
