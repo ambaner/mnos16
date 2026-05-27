@@ -77,11 +77,14 @@ kernel_start:
     ; In release builds, CANARY_INIT expands to nothing (0 bytes).
     CANARY_INIT
 
-    ; --- Load FS.SYS (filesystem module) at 0x0800 ---------------------------
-    ; FS.SYS replaces LOADER.SYS in memory (LOADER's job is done).
-    ; Use 0x3000 (shell area) as scratch buffer for directory read.
-    ; Select filename based on boot mode (release=FS, debug=FSD).
-    mov bx, SHELL_OFF               ; Scratch buffer (shell not loaded yet)
+    ; --- Initialize next_base for dynamic module placement --------------------
+    mov word [next_base], MODULE_FIRST_BASE
+
+    ; =========================================================================
+    ; LOAD FS.SYS — first relocatable module
+    ; =========================================================================
+    ; Use DIR_SCRATCH_BUF for directory read (below kernel, above module area).
+    mov bx, DIR_SCRATCH_BUF
     cmp byte [BIB_BOOT_MODE], 1
     je .use_fsd
     mov si, fname_fs                ; "FS      SYS"
@@ -93,33 +96,44 @@ kernel_start:
     jc .fs_find_fail
 
     ; EAX = partition-relative start sector, CX = size in sectors
-    mov bx, LOADER_OFF              ; Load FS.SYS at 0x0800 (LOADER's old slot)
+    mov bx, [next_base]             ; Load at current next_base
     mov ecx, 'MNFS'                 ; Expected magic signature
-    mov dh, 16                      ; Maximum sector count
+    mov dh, 32                      ; Maximum sector count
     call load_mnex
     jc .fs_load_fail
-    ASSERT_MAGIC LOADER_OFF, 'MNFS', "FS.SYS magic invalid after load"
+
+    ; Apply relocations to FS.SYS
+    mov di, [next_base]             ; DI = module load base
+    call apply_relocs
+    jc .fs_load_fail
+
+    ; Advance next_base past FS.SYS
+    mov di, [next_base]
+    mov cx, [di + 4]                ; sector_count from header
+    shl cx, 9                       ; cx *= 512
+    add [next_base], cx
 
     mov si, msg_fs
     call boot_ok
-    DBG "KERNEL: FS.SYS loaded at 0x0800"
+    DBG "KERNEL: FS.SYS loaded and relocated"
 
     ; --- Initialize FS.SYS (installs INT 0x81) --------------------------------
-    ; FS.SYS's init entry point is at offset 6 (right after the 6-byte header).
-    call LOADER_OFF + MNEX_HDR_SIZE
+    ; Entry point is at header's entry_offset field (offset 10 in v2 header).
+    mov di, [next_base]
+    sub di, cx                      ; DI = FS load base again
+    mov ax, [di + 10]               ; entry_offset from v2 header
+    add ax, di                      ; AX = absolute entry address
+    call ax
     jc .fs_init_fail
-    ASSERT_CF_CLEAR "FS.SYS init returned error"
 
     mov si, msg_fs_init
     call boot_ok
     DBG "KERNEL: INT 0x81 filesystem ready"
 
-    ; --- Load MM.SYS (memory manager) at 0x2800 ------------------------------
-    ; MM.SYS provides dynamic heap allocation via INT 0x82.
-    ; Use 0x2000 as scratch buffer for directory read (safe — above FS.SYS,
-    ; below MM target at 0x2800).
-    ; Select filename based on boot mode (release=MM, debug=MMD).
-    mov bx, 0x2000                  ; Scratch buffer
+    ; =========================================================================
+    ; LOAD MM.SYS — second relocatable module
+    ; =========================================================================
+    mov bx, DIR_SCRATCH_BUF
     cmp byte [BIB_BOOT_MODE], 1
     je .use_mmd
     mov si, fname_mm                ; "MM      SYS"
@@ -131,31 +145,43 @@ kernel_start:
     jc .mm_find_fail
 
     ; EAX = partition-relative start sector, CX = size in sectors
-    mov bx, MM_OFF                  ; Load address (0x2800)
+    mov bx, [next_base]             ; Load right after FS.SYS
     mov ecx, 'MNMM'                ; Expected magic signature
-    mov dh, MM_MAX_SECTORS          ; Maximum sector count (4)
+    mov dh, 32                      ; Maximum sector count
     call load_mnex
     jc .mm_load_fail
-    ASSERT_MAGIC MM_OFF, 'MNMM', "MM.SYS magic invalid after load"
+
+    ; Apply relocations to MM.SYS
+    mov di, [next_base]             ; DI = module load base
+    call apply_relocs
+    jc .mm_load_fail
+
+    ; Advance next_base past MM.SYS
+    mov di, [next_base]
+    mov cx, [di + 4]                ; sector_count from header
+    shl cx, 9                       ; cx *= 512
+    add [next_base], cx
 
     mov si, msg_mm
     call boot_ok
-    DBG "KERNEL: MM.SYS loaded at 0x2800"
+    DBG "KERNEL: MM.SYS loaded and relocated"
 
     ; --- Initialize MM.SYS (installs INT 0x82) --------------------------------
-    ; MM.SYS's init entry point is at offset 6 (right after the 6-byte header).
-    call MM_OFF + MNEX_HDR_SIZE
+    mov di, [next_base]
+    sub di, cx                      ; DI = MM load base
+    mov ax, [di + 10]               ; entry_offset from v2 header
+    add ax, di                      ; AX = absolute entry address
+    call ax
     jc .mm_init_fail
 
     mov si, msg_mm_init
     call boot_ok
     DBG "KERNEL: INT 0x82 memory manager ready"
 
-    ; --- Load SHELL.SYS at 0x3000 --------------------------------------------
-    ; Use 0x2000 as scratch buffer for directory read (safe — between LOADER
-    ; area and SHELL area, and FS.SYS at 0x0800 is only ~1 KB).
-    ; Select filename based on boot mode (release=SHELL, debug=SHELLD).
-    mov bx, 0x2000                  ; Scratch buffer
+    ; =========================================================================
+    ; LOAD SHELL.SYS — third relocatable module
+    ; =========================================================================
+    mov bx, DIR_SCRATCH_BUF
     cmp byte [BIB_BOOT_MODE], 1
     je .use_shelld
     mov si, fname_shell             ; "SHELL   SYS"
@@ -167,22 +193,42 @@ kernel_start:
     jc .shell_find_fail
 
     ; EAX = partition-relative start sector, CX = size in sectors
-    mov bx, SHELL_OFF               ; Load address (segment 0x0000)
+    mov bx, [next_base]             ; Load right after MM.SYS
     mov ecx, 'MNEX'                 ; Expected magic signature
     mov dh, 32                      ; Maximum sector count
     call load_mnex
     jc .shell_load_fail
-    ASSERT_MAGIC SHELL_OFF, 'MNEX', "SHELL.SYS magic invalid after load"
+
+    ; Validate: shell end must not overlap kernel
+    mov cx, [bx + 4]               ; sector_count (BX still = load addr from load_mnex)
+    shl cx, 9                       ; bytes
+    mov ax, [next_base]
+    add ax, cx
+    cmp ax, KERNEL_OFF
+    ja .shell_load_fail             ; Overlap! Fatal error
+
+    ; Apply relocations to SHELL.SYS
+    mov di, [next_base]
+    call apply_relocs
+    jc .shell_load_fail
+
+    ; Get shell entry point
+    mov di, [next_base]
+    mov ax, [di + 10]               ; entry_offset from v2 header
+    add ax, di                      ; AX = absolute entry address
+    mov [.shell_entry], ax          ; Save for jump
+
+    ; Advance next_base past SHELL.SYS (for canary placement)
+    mov cx, [di + 4]                ; sector_count
+    shl cx, 9
+    add [next_base], cx
 
     mov si, msg_shell
     call boot_ok
     DBG "KERNEL: SHELL.SYS loaded, jumping to shell"
 
     ; --- Transfer control to shell --------------------------------------------
-    ; The shell is a user-mode executable.  When it calls INT 0x80, the CPU
-    ; jumps to our syscall_handler via the IVT entry we installed above.
-    ; Skip the 6-byte MNEX header (magic + sector count) to reach shell code.
-    jmp SHELL_SEG:SHELL_OFF + MNEX_HDR_SIZE
+    jmp word [.shell_entry]
 
 .fs_find_fail:
     mov si, msg_fs_find
@@ -215,6 +261,53 @@ kernel_start:
 .mm_init_fail:
     mov si, msg_mm_initf
     call boot_fail
+
+; Local storage
+.shell_entry:   dw 0
+
+; =============================================================================
+; apply_relocs — Patch absolute references in a loaded MNEX v2 module
+;
+; Reads the relocation table from the module's v2 header and adds the load
+; base address to each referenced 16-bit word in the module.
+;
+; Input:
+;   DI = module load base address (also the value added to each reloc)
+;
+; Output:
+;   CF clear = success (relocations applied, or no relocs needed)
+;   CF set   = error (invalid header — flags indicate reloc but count is 0)
+;
+; Clobbers: AX, BX, CX, SI
+; Preserves: DI, DX, BP, ES, DS
+; =============================================================================
+apply_relocs:
+    ; Check flags field for MNEX_V2_FLAG_RELOC
+    mov ax, [di + 6]               ; flags
+    test ax, MNEX_V2_FLAG_RELOC
+    jz .ar_done                    ; No relocations — nothing to do
+
+    mov cx, [di + 8]               ; reloc_count
+    test cx, cx
+    jz .ar_fail                    ; Has flag but zero relocs = invalid
+
+    ; SI = start of relocation table (at offset 12 from module base)
+    lea si, [di + MNEX_V2_HDR_BASE]
+
+.ar_patch_loop:
+    lodsw                          ; AX = file-relative offset of word to patch
+    mov bx, di
+    add bx, ax                     ; BX = absolute address of the word
+    add word [bx], di              ; Add load base to the value at that offset
+    loop .ar_patch_loop
+
+.ar_done:
+    clc
+    ret
+
+.ar_fail:
+    stc
+    ret
 
 ; =============================================================================
 ; install_syscalls — Install the INT 0x80 handler into the IVT

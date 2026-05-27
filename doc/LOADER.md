@@ -52,9 +52,9 @@ job is done.
               v
           KERNEL.SYS (or KERNELD.SYS)
               │
-              ├── Loads FS.SYS (or FSD.SYS) at 0x0800  ← overwrites LOADER
-              ├── Loads SHELL.SYS (or SHELLD.SYS) at 0x3000
-              └── Jumps to shell
+              ├── Loads FS.SYS at 0x0800 + relocates  ← overwrites LOADER
+              ├── Loads MM.SYS + SHELL.SYS sequentially + relocates each
+              └── Jumps to shell entry (from v2 header)
 ```
 
 ### Position in the Boot Info Block
@@ -87,7 +87,7 @@ Address         Contents                    Notes
 0x1000–0x27FF   (available for growth)      LOADER can grow to 8 KB
 
 0x3000–0x4FFF   Scratch buffer              Used as temp buffer for
-                                            MNFS directory read
+                (DIR_SCRATCH_BUF=0x4E00)    MNFS directory read
 0x5000–0x6FFF   Kernel load target          KERNEL.SYS loaded here
 0x7C00–0x7DFF   VBR (still in memory)       Not used by LOADER
 0x7E00–0x9FBFF  Stack + free                Stack grows down from ~0x7C00
@@ -95,10 +95,10 @@ Address         Contents                    Notes
 
 ### Scratch Buffer Strategy
 
-The LOADER needs a 512-byte buffer to read the MNFS directory.  It uses 0x3000
-(the future SHELL.SYS region) as a scratch buffer — the shell hasn't been
-loaded yet, so this memory is free.  This same strategy is used by the kernel
-when loading FS.SYS.
+The LOADER needs a 512-byte buffer to read the MNFS directory.  It uses
+DIR_SCRATCH_BUF (0x4E00) — a region within the module area that will be
+overwritten when the kernel loads system modules.  This is safe because the
+loader is finished before the kernel begins module loading.
 
 ---
 

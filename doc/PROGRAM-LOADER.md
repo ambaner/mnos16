@@ -1,6 +1,6 @@
 # Program Loader Design Document
 
-## Version: v0.9.6 (Implemented)
+## Version: v0.9.14 (Implemented)
 
 ## 1. Overview
 
@@ -20,30 +20,37 @@ This is the mini-os equivalent of DOS's `COMMAND.COM` loading `.COM` files.
 3. Provide syscall interface for user programs (INT 0x80, 0x81, 0x82)
 4. Allow programs to return cleanly to the shell
 5. Validate programs before execution (multi-layer protection)
-6. Keep implementation simple — flat binary, no relocation
+6. Support relocatable binaries — programs assembled at ORG 0, patched at load time
 
 ---
 
 ## 3. Memory Layout
 
-### 3.1 Memory Layout (v0.9.6)
+### 3.1 Memory Layout (v0.9.14)
 
 ```
 0x0000 ─────── IVT + BDA
-0x0600 ─────── Boot Info Block (16 bytes)
-0x0800 ─────── FS.SYS (2 sectors, 1 KB)
-0x2800 ─────── MM.SYS (2 KB max)
-0x3000 ─────── SHELL.SYS (16 sectors, 8 KB)
-0x5000 ─────── KERNEL.SYS (8 sectors, 4 KB)
-0x7000 ─────── (gap)
+0x0600 ─────── Boot Info Block (BIB, 16 bytes)
+0x0800 ─────── MODULE_FIRST_BASE — System modules packed sequentially:
+               ├── FS.SYS   (5 sectors, placed first — always at 0x0800)
+               ├── MM.SYS   (2 sectors, placed immediately after FS)
+               └── SHELL.SYS (14 sectors, placed immediately after MM)
+               (Positions are dynamic — determined at boot by kernel)
+0x5000 ─────── KERNEL.SYS (fixed ORG, loaded by LOADER)
+0x6C00 ─────── Stack canary zone
 0x7C00 ─────── Stack (grows down from here)
 0x7FFC ─────── SHELL_ARGS_PTR (2 bytes, ABI slot)
 0x7FFE ─────── SHELL_SAVED_SP (2 bytes, ABI slot)
 0x8000 ─────── USER_PROG_BASE — Transient Program Area (TPA)
-  ...           (program code + data + BSS)
+  ...           (program code + data + BSS, relocatable)
 0xF7FF ─────── USER_PROG_END — end of TPA
 0xF800 ─────── End of usable conventional memory
 ```
+
+**Note**: Module positions below 0x5000 are no longer hardcoded.  The kernel
+loads modules sequentially starting at MODULE_FIRST_BASE (0x0800) and uses
+the v2 relocation table to patch absolute addresses at load time.  See
+`doc/ABI.md` for the binary format details.
 
 ### 3.2 Key Constants
 
@@ -66,7 +73,30 @@ allowing the TPA to start at 0x8000 instead of 0x9000:
 
 ## 4. MNX File Format
 
-User executables use the standard MNEX header format with `'MNEX'` magic:
+User executables use the **MNEX v2 header format** (v0.9.14+) with `'MNEX'` magic.
+Programs are assembled with `[ORG 0]` and relocated at load time by the shell.
+
+### 4.0 v2 Header (Relocatable — current)
+
+```
+Offset  Size  Field         Description
+──────  ────  ──────────    ─────────────────────────────────────────
+0x00    4     magic         'MNEX' — identifies as user executable
+0x04    2     size_sectors  File size in 512-byte sectors
+0x06    2     flags         Bit 0 (MNEX_V2_FLAG_RELOC): has relocation table
+0x08    2     reloc_count   Number of 16-bit relocation entries
+0x0A    2     entry_offset  Code entry point (offset from load base)
+0x0C    N×2   reloc_table   Array of file-relative offsets to patch
+...           code/data     Binary content (assembled at ORG 0)
+```
+
+The shell detects v2 format by checking `flags & 0x0001`.  If set:
+1. Reads `reloc_count` entries from `reloc_table`
+2. For each entry, adds `USER_PROG_BASE` to the 16-bit word at that offset
+3. Computes entry: `USER_PROG_BASE + entry_offset`
+4. Calls the program via memory-indirect: `call [run_entry_addr]`
+
+### 4.1 Legacy v1 Header (Deprecated)
 
 ```
 Offset  Size  Field         Description
@@ -76,30 +106,44 @@ Offset  Size  Field         Description
 0x06    ...   code          Entry point — execution begins here
 ```
 
-### 4.1 Program Requirements
+v1 binaries are detected via a **two-stage check**:
+1. If `flags & 0x0001 == 0` → definitely v1 (flag check)
+2. If flag is set, verify `entry_offset == 12 + reloc_count * 2` (secondary
+   validation).  If this fails → treat as v1 (the first opcode had bit 0 set
+   by coincidence, e.g., `jmp short` 0xEB, `push bp` 0x55, `ret` 0xC3).
 
-- Assembled with `[ORG USER_PROG_BASE]` (currently 0x8000)
-- Entry point at offset 6 (immediately after the 6-byte header)
+The shell falls back to the legacy entry at offset 6 (`call USER_PROG_BASE + 6`).
+v1 binaries must be assembled with `[ORG USER_PROG_BASE]`.
+
+**Note**: All current programs use v2 format.  v1 support is retained for
+backward compatibility with third-party binaries that predate v0.9.14.
+
+### 4.2 Program Requirements (v2)
+
+- Assembled with `[ORG 0]` (zero-based, relocatable)
+- Built using `gen_relocs.py` + `pack_module.py` toolchain
+- Entry point specified by `entry_offset` field (typically = header + reloc table size)
 - Must return to caller via `ret` or invoke `SYS_EXIT` (INT 0x80, AH=0x23)
 - May use INT 0x80 (kernel), INT 0x81 (filesystem), INT 0x82 (memory manager)
 - Must not write below USER_PROG_BASE or above 0xF7FF
 - Must preserve SS:SP (stack is shared with shell)
+- Must not assume any particular load address — all absolute references are patched
 
-### 4.2 Minimal Example: HELLO.MNX
+### 4.3 Minimal Example: HELLO.MNX (v2)
 
 ```nasm
-; HELLO.MNX — minimal user program
-; Prints "Hello, world!" and returns to shell
+; HELLO.MNX — minimal user program (v2 relocatable)
+; Assembled with ORG 0, header generated by pack_module.py
 ;
+%ifndef RELOC_BASE
+%define RELOC_BASE 0
+%endif
 %include "memory.inc"
-[ORG USER_PROG_BASE]
+[ORG RELOC_BASE]
 [BITS 16]
 
-; --- MNEX Header (6 bytes) ---
-hello_magic     db 'MNEX'           ; Magic identifier
-hello_sectors   dw 1                ; Size in sectors
+; No inline header — generated by pack_module.py toolchain
 
-; --- Entry point (offset 6) ---
 entry:
     mov si, msg_hello
     mov ah, 0x01                    ; SYS_PRINT_STRING
@@ -107,9 +151,12 @@ entry:
     ret                             ; Return to shell
 
 msg_hello   db 'Hello, world!', 13, 10, 0
+```
 
-; Pad to sector boundary
-times 512 - ($ - $$) db 0
+Build command:
+```
+gen_relocs.py hello.asm --nasm tools/nasm/nasm.exe --header-size 0 -o hello.rel
+pack_module.py hello.bin hello.rel --magic MNEX --pad-sectors -o HELLO.MNX
 ```
 
 ---
@@ -188,21 +235,34 @@ User types: HELLO
      │
      ▼
 ┌─────────────────────────────────────────┐
-│ 7. Save shell state                     │
+│ 7. Relocation (v2 binaries)            │
+│    If flags & 0x0001 (MNEX_V2_FLAG):   │
+│    - Read reloc_count entries           │
+│    - For each: add USER_PROG_BASE to   │
+│      the 16-bit word at that offset    │
+│    - Compute entry_addr from header    │
+│    If not set: legacy v1 (entry at +6) │
+└─────────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────────┐
+│ 8. Save shell state                     │
 │    Save SP to shell_saved_sp            │
 │    (for SYS_EXIT recovery)              │
 └─────────────────────────────────────────┘
      │
      ▼
 ┌─────────────────────────────────────────┐
-│ 8. Execute program                      │
-│    call USER_PROG_BASE + 6              │
-│    (near call — return addr on stack)   │
+│ 9. Execute program                      │
+│    v2: call [run_entry_addr]            │
+│        (memory-indirect near call)      │
+│    v1: call USER_PROG_BASE + 6          │
+│        (direct near call — legacy)      │
 └─────────────────────────────────────────┘
      │
      ▼
 ┌─────────────────────────────────────────┐
-│ 9. Program returns (ret or SYS_EXIT)    │
+│ 10. Program returns (ret or SYS_EXIT)  │
 │     Shell regains control               │
 │     Print newline, back to prompt       │
 └─────────────────────────────────────────┘
@@ -296,21 +356,28 @@ src/programs/
 
 ### 7.2 Build Script Updates (`build.ps1`)
 
-Add a user programs assembly phase:
+User programs are built as relocatable v2 binaries using the `Build-RelocModule`
+function (same toolchain as system modules):
 
 ```powershell
-# --- User programs ---
-$programsDir = Join-Path $SrcDir "programs"
-if (Test-Path $programsDir) {
-    $programs = Get-ChildItem $programsDir -Filter "*.asm"
-    foreach ($prog in $programs) {
-        $outName = [System.IO.Path]::GetFileNameWithoutExtension($prog.Name) + ".mnx"
-        $outPath = Join-Path $OutputDir $outName
-        & $NasmPath -f bin -I "$IncludeDir/" -o $outPath $prog.FullName
-        # Validate: must be multiple of 512 bytes
-    }
-}
+# --- User programs (relocatable v2) ---
+Build-RelocModule -Source "src/programs/sysinfo/sysinfo.asm" `
+                  -Output "output/SYSINFO.MNX" `
+                  -Magic "MNEX"
+
+Build-RelocModule -Source "src/programs/mnmon.asm" `
+                  -Output "output/MNMON.MNX" `
+                  -Magic "MNEX"
+
+Build-RelocModule -Source "src/programs/edit/edit.asm" `
+                  -Output "output/EDIT.MNX" `
+                  -Magic "MNEX"
 ```
+
+The `Build-RelocModule` function:
+1. Assembles at ORG 0 (raw binary, no header)
+2. Runs `gen_relocs.py` (delta comparison at ORG 0 vs ORG 0x100)
+3. Runs `pack_module.py` (pre-biases relocations, constructs v2 header, pads to sector boundary)
 
 ### 7.3 Disk Image Updates (`create-disk.ps1`)
 
@@ -324,31 +391,35 @@ Add user programs to the MNFS directory with `ATTR_EXEC`:
 
 ## 8. Implementation Summary
 
-All phases were completed for v0.9.6.
+All phases were completed for v0.9.6, with major updates in v0.9.14.
 
-### Phase 1: Memory Layout + Heap Resize ✓
+### Phase 1: Memory Layout + Heap Resize ✓ (v0.9.6)
 - `USER_PROG_*` constants in `memory.inc`
-- `mm_init` uses 0x8FFF as heap end (4 KB heap)
+- Heap moved to HMA (64 KB), TPA expanded to 30 KB
 - Shell `mem` command shows TPA in memory map
 
-### Phase 2: Shell Program Execution ✓
+### Phase 2: Shell Program Execution ✓ (v0.9.6, updated v0.9.14)
 - Implicit execution via shell unknown-command handler
 - Filename parsing with auto-append MNX (no extension required)
 - `FS_FIND_BASE` syscall for base-name-only file search
 - Attribute checks (no SYSTEM, has EXEC), size check, MNEX magic validation
-- Near `call` to `USER_PROG_BASE + 6` with SP save/restore for SYS_EXIT
+- **v0.9.14**: v2 relocation patching before execution
+- **v0.9.14**: Memory-indirect `call [run_entry_addr]` replaces direct `call`
 
-### Phase 3: New Syscalls ✓
+### Phase 3: New Syscalls ✓ (v0.9.6)
 - SYS_EXIT (AH=0x23) — terminate program, restore shell SP
 - SYS_GET_ARGS (AH=0x24) — return pointer to command-line arguments
 
-### Phase 4: HELLO.MNX Demo Program ✓
-- `src/programs/hello.asm` — prints "Hello, world!" and returns
-- `build.ps1` assembles user programs, `create-disk.ps1` includes them
+### Phase 4: Relocatable Programs ✓ (v0.9.14)
+- All programs converted to `[ORG 0]` (SYSINFO, MNMON, EDIT)
+- Built via `gen_relocs.py` + `pack_module.py` toolchain
+- Shell detects v2 header, applies relocations at load time
+- Entry point from header's `entry_offset` field (not fixed offset 6)
+- Legacy v1 fallback preserved for backward compatibility
 
 ### Phase 5: Documentation + Release ✓
-- PROGRAM-LOADER.md, README.md, CHANGELOG.md, SYSTEM-CALLS.md updated
-- Version bumped to v0.9.6
+- PROGRAM-LOADER.md, ABI.md, README.md, CHANGELOG.md updated
+- Version bumped to v0.9.14
 
 ---
 
@@ -394,12 +465,49 @@ No single check is sufficient:
 - Magic alone: doesn't prevent running system files
 - Combined: defense-in-depth, catches mistakes and corruption
 
-### 9.6 Why ORG USER_PROG_BASE?
+### 9.6 Why relocatable binaries? (v0.9.14)
 
-Programs must know their load address for absolute references (strings,
-jump tables).  `[ORG USER_PROG_BASE]` tells NASM to generate addresses
-relative to the TPA base (0x8000).  This mirrors DOS `.COM` files using
-`[ORG 0x0100]`.
+Programs are assembled with `[ORG 0]` and patched at load time.  This provides:
+
+1. **Binary portability** — a program built for one version of MNOS16 runs on
+   future versions, even if the kernel changes where things live in memory.
+2. **Consistent toolchain** — both system modules and user programs use the
+   same `gen_relocs.py` + `pack_module.py` pipeline.
+3. **No hardcoded assumptions** — programs don't encode `0x8000` into their
+   instructions; the loader patches them.  If TPA ever moves, only the loader
+   changes.
+
+The delta-comparison technique (assemble at ORG 0 vs ORG 0x100, find words
+that differ by exactly 0x100) automatically discovers all absolute references
+without manual annotation.
+
+### 9.7 Why memory-indirect call for v2 programs?
+
+The original `call USER_PROG_BASE + 6` is a relative (E8) near call.  If
+the called program uses the v2 header (where the entry point varies based on
+relocation table size), the old fixed-offset approach is wrong.  More subtly,
+encoding a `call` to a fixed external address inside a relocatable binary
+creates a false relocation hit (the E8 displacement changes with ORG).
+
+The fix: store the computed entry address in a variable (`run_entry_addr`)
+and use `call [run_entry_addr]` (FF /2 memory-indirect).  The instruction
+encoding doesn't change with ORG, and it supports variable entry points.
+
+### 9.8 Why keep v1 fallback?
+
+Third-party programs built before v0.9.14 use the v1 format (6-byte header,
+entry at offset 6, assembled with `[ORG 0x8000]`).  The shell detects v1
+by checking whether `flags & 0x0001 == 0` and falls back to the direct call.
+This ensures binary compatibility with older programs.
+
+### 9.9 Why does the TPA address (0x8000) remain fixed?
+
+Even though programs are now relocatable, USER_PROG_BASE remains at 0x8000:
+- Existing programs have their relocations pre-biased for this address
+- The TPA is a stable ABI guarantee (see doc/ABI.md)
+- There's no benefit to moving it — the space below is needed for OS modules
+- If we ever need a different load address, the relocation system makes it
+  trivial without recompiling user programs
 
 ---
 
@@ -410,8 +518,9 @@ relative to the TPA base (0x8000).  This mirrors DOS `.COM` files using
 - **Multiple program execution** — `A.MNX && B.MNX` chaining
 - **Background programs** — TSR-style (Terminate and Stay Resident)
 - **Return code checking** — shell `%ERRORLEVEL%` equivalent
-- **Relocation support** — load programs at arbitrary addresses
+- ~~**Relocation support** — load programs at arbitrary addresses~~ ✓ Done (v0.9.14)
 - **Stack isolation** — separate stack for user programs (prevents corruption)
+- **v2 header versioning** — add a format version field for future header evolution
 
 ---
 

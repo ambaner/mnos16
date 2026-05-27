@@ -201,6 +201,7 @@ run_file_sectors dw 0               ; File size in sectors (from FS_FIND_FILE)
 run_args_ptr    dw 0                ; Pointer to argument string in cmd_buf
 run_ext_provided db 0               ; 1 if user typed a dot+extension, 0 if not
 run_empty_args  db 0                ; Empty NUL string for no-args case
+run_entry_addr  dw 0                ; Computed entry point address for program
 
 ; --- del/ren command strings --------------------------------------------------
 msg_del_ok      db 'File deleted.', 13, 10, 0

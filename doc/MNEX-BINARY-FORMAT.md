@@ -286,6 +286,63 @@ behavior, just with a richer header.
 A3 B5 C7 D9   checksum:     CRC-32 of code region
 ```
 
+### 3.6 Current Runtime Format: v2 Compact Header (16-bit, v0.9.14)
+
+The 32-byte universal header (§3) is the **target format** for future versions
+(32-bit/64-bit).  For the current 16-bit implementation, all system modules and
+user programs use a **compact v2 header** optimized for minimal loader complexity:
+
+```
+┌────────┬───────┬──────────────┬──────────────────────────────────────┐
+│ Offset │ Size  │ Field        │ Description                          │
+├────────┼───────┼──────────────┼──────────────────────────────────────┤
+│ 0      │ 4 B   │ magic        │ Module/program type ('MNFS', 'MNMM', │
+│        │       │              │ 'MNSH', 'MNEX')                      │
+│ 4      │ 2 B   │ sector_count │ Total file size in 512-byte sectors  │
+│ 6      │ 2 B   │ flags        │ Bit 0: MNEX_V2_FLAG_RELOC (=0x0001) │
+│        │       │              │ If set: has relocation table         │
+│ 8      │ 2 B   │ reloc_count  │ Number of 16-bit relocation entries  │
+│ 10     │ 2 B   │ entry_offset │ Code entry point (bytes from load    │
+│        │       │              │ base to first instruction)           │
+│ 12     │ N×2 B │ reloc_table  │ Array of file-relative offsets; each │
+│        │       │              │ points to a 16-bit word to patch     │
+│ 12+N×2 │ ...   │ code/data    │ Binary content (assembled at ORG 0)  │
+└────────┴───────┴──────────────┴──────────────────────────────────────┘
+Total header: 12 + (reloc_count × 2) bytes (variable)
+```
+
+**Key differences from the 32-byte universal header:**
+
+| Aspect | Universal (§3) | v2 Compact (current) |
+|--------|---------------|---------------------|
+| Header size | Fixed 32 bytes | Variable (12 + relocs) |
+| Fields | 10 fields (32/64-bit ready) | 5 fields (16-bit focused) |
+| Relocation | Flag bit 1 reserved | Fully implemented |
+| Load address | Explicit `load_addr` field | Determined by loader at runtime |
+| BSS/Stack | Explicit fields | Not needed (NASM handles via `times`) |
+| CPU mode | Explicit field | Implicit (all 16-bit) |
+
+**Migration path**: When mini-os transitions to 32-bit mode, the universal
+32-byte header will replace the v2 compact header.  The `flags.has_reloc`
+bit (bit 1) in the universal header will indicate that a relocation table
+follows the 32-byte header, extending the same concept.
+
+**Runtime relocation algorithm** (applied by kernel for modules, shell for programs):
+```
+for i = 0 to reloc_count - 1:
+    offset = reloc_table[i]           ; file-relative offset
+    word_ptr = load_base + offset     ; physical address of word to patch
+    [word_ptr] += load_base           ; add actual load address
+entry_point = load_base + entry_offset
+```
+
+**Pre-biasing** (applied at build time by `pack_module.py`):
+- Code is assembled at ORG 0, so all label references are zero-based offsets
+  into the raw code section
+- `pack_module.py` prepends the header + reloc_table (prefix_size bytes)
+- Each word targeted by a relocation entry gets `prefix_size` added
+- At load time, the loader adds `load_base` to complete the address
+
 ---
 
 ## 4. CPU Mode Validation

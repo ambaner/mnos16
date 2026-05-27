@@ -14,7 +14,8 @@
 ;   Rows 1-23: Edit area (23 lines, normal video)
 ;   Row 24:    Status bar (inverse video)
 ;
-; Loaded into TPA at USER_PROG_BASE (0x8000). Max ~30 KB total.
+; Relocatable user-mode executable (MNEX v2 format). Max ~30 KB total.
+; The shell applies relocations at load time — binary portable across versions.
 ;
 ; Build: nasm -f bin -I src/include/ -I src/programs/edit/ -o build/boot/edit.mnx src/programs/edit.asm
 ; Run:   mnos:\> run EDIT.MNX [filename]
@@ -36,13 +37,10 @@
 ; %define EDIT_DEBUG 1               ; Uncomment for serial debug traces
 
 [BITS 16]
-[ORG USER_PROG_BASE]
-
-; =============================================================================
-; MNEX HEADER (6 bytes)
-; =============================================================================
-            db 'MNEX'               ; Magic — user-mode executable
-edit_sectors dw 13                  ; Size in sectors (13 = 6656 bytes)
+%ifndef RELOC_BASE
+%define RELOC_BASE 0
+%endif
+[ORG RELOC_BASE]
 
 ; =============================================================================
 ; CONSTANTS

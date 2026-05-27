@@ -11,7 +11,9 @@
 ; All hardware queries go through INT 0x80 kernel syscalls.
 ; Press any key to advance between pages.
 ;
-; Loaded into the Transient Program Area (TPA) at 0x9000.
+; Relocatable user-mode executable (MNEX v2 format).
+; The shell applies relocations at load time — binary portable across versions.
+;
 ; Returns to shell via SYS_EXIT.
 ;
 ; Build: nasm -f bin -I src/include/ -I src/programs/sysinfo/ -o build/boot/sysinfo.mnx src/programs/sysinfo/sysinfo.asm
@@ -23,17 +25,13 @@
 %include "bib.inc"
 
 [BITS 16]
-[ORG USER_PROG_BASE]                ; 0x9000
+%ifndef RELOC_BASE
+%define RELOC_BASE 0
+%endif
+[ORG RELOC_BASE]
 
 ; =============================================================================
-; MNEX HEADER (6 bytes)
-; =============================================================================
-            db 'MNEX'               ; Magic — user-mode executable
-sysinfo_sectors:
-            dw 6                    ; Size in sectors (3072 bytes)
-
-; =============================================================================
-; ENTRY POINT (offset 6)
+; ENTRY POINT
 ; =============================================================================
 entry:
 
@@ -44,8 +42,3 @@ entry:
 ; =============================================================================
 
 %include "sysinfo_data.inc"
-
-; =============================================================================
-; PADDING — pad to exact sector boundary
-; =============================================================================
-times (6 * 512) - ($ - $$) db 0

@@ -36,3 +36,6 @@ dap_buffer:
     dw 0, 0
 dap_lba:
     dd 0, 0
+
+; --- Dynamic module loader state ---------------------------------------------
+next_base:  dw 0                    ; Next available load address (kernel_start sets it)

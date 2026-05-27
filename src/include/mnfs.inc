@@ -49,7 +49,31 @@ MNFS_ATTR_EXEC    equ 0x02           ; User-mode executable (MNEX format)
 ; Code entry point is always at offset 6, right after the header.
 MNEX_HDR_SIZE     equ 6              ; Header size — callers must jump past it
 
-; --- INT 0x81 filesystem syscall numbers -------------------------------------
+; --- MNEX v2 header (relocatable modules and programs) ------------------------
+; Used by FS.SYS, MM.SYS, SHELL.SYS, and .MNX user programs.
+; The loader/shell detects v2 by checking the flags field at offset 6.
+;
+; Offset 0:  db magic[4]      ; Module magic ('MNFS', 'MNMM', 'MNEX')
+; Offset 4:  dw sector_count  ; Total module size in 512-byte sectors
+; Offset 6:  dw flags         ; Bit 0: has relocation table
+; Offset 8:  dw reloc_count   ; Number of 16-bit relocation entries
+; Offset 10: dw entry_offset  ; Offset from load base to first instruction
+; Offset 12: dw reloc_table[] ; reloc_count x 2-byte offsets into module
+;            ...code/data...  ; Code begins at entry_offset
+;
+; The kernel applies relocations to system modules, and the shell applies
+; them to user programs, by adding the load base address to the 16-bit word
+; at each offset in the relocation table.
+;
+; Legacy v1 programs (6-byte header, no relocs) are still supported by the
+; shell — detected when EITHER flags bit 0 is clear OR the secondary
+; validation fails (entry_offset != 12 + reloc_count * 2).  The secondary
+; check prevents false-positive v2 detection when a v1 binary's first
+; opcode happens to have bit 0 set (e.g., 0xEB jmp, 0x55 push bp, 0xC3 ret).
+MNEX_V2_HDR_BASE  equ 12             ; Fixed header fields before reloc table
+MNEX_V2_FLAG_RELOC equ 0x0001        ; flags bit 0: relocation table present
+
+
 ; These are function numbers passed in AH before INT 0x81.
 ; FS.SYS dispatches based on AH.  See doc/FILESYSTEM.md §8.
 FS_LIST_FILES     equ 0x01           ; ES:BX=buf → CL=count, buf=directory

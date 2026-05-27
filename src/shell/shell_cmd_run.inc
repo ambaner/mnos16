@@ -11,11 +11,13 @@
 ;   2. Convert to uppercase 8.3 format (auto-append MNX if no extension)
 ;   3. Find file via FS_FIND_BASE (no ext) or FS_FIND_FILE (ext provided)
 ;   4. Check attributes: no ATTR_SYSTEM, has ATTR_EXEC
-;   5. Check size <= 26 KB (52 sectors)
-;   6. Load file to USER_PROG_BASE (0x9000)
+;   5. Check size <= USER_PROG_MAX_SEC sectors
+;   6. Load file to USER_PROG_BASE (0x8000)
 ;   7. Validate MNEX magic at load address
-;   8. Save shell state (SP, args pointer)
-;   9. Execute program via near call to entry point
+;   8. Detect v2 (flag check + secondary validation: entry_offset == 12+N*2)
+;   9. Apply relocations if v2; else fall back to v1 entry at offset 6
+;  10. Save shell state (SP, args pointer)
+;  11. Execute program via memory-indirect call to entry point
 ;
 ; See doc/PROGRAM-LOADER.md for the complete specification.
 ; =============================================================================
@@ -139,6 +141,45 @@ run_skip_spaces:
     cmp dword [USER_PROG_BASE], 'MNEX'
     jne .run_err_bad_header
 
+    ; --- Step 8b: Apply relocations if v2 header ------------------------------
+    ; Check flags field (offset 6) for MNEX_V2_FLAG_RELOC
+    mov di, USER_PROG_BASE
+    test word [di + 6], MNEX_V2_FLAG_RELOC
+    jz .run_no_relocs
+
+    ; Secondary v2 validation: entry_offset must equal 12 + reloc_count * 2
+    ; This prevents false-positive detection when a v1 binary's first opcode
+    ; happens to have bit 0 set (e.g., 0xEB jmp short, 0x55 push bp).
+    mov ax, [di + 8]               ; AX = reloc_count
+    shl ax, 1                      ; AX = reloc_count * 2
+    add ax, MNEX_V2_HDR_BASE       ; AX = expected entry_offset (12 + N*2)
+    cmp ax, [di + 10]              ; Compare with actual entry_offset field
+    jne .run_no_relocs             ; Mismatch → not really v2, treat as v1
+
+    ; v2 relocatable program — patch absolute references
+    mov cx, [di + 8]               ; reloc_count
+    jcxz .run_no_relocs            ; Zero relocs = nothing to do
+    lea si, [di + MNEX_V2_HDR_BASE] ; SI = start of relocation table
+
+.run_patch_loop:
+    lodsw                          ; AX = file-relative offset of word to patch
+    mov bx, di
+    add bx, ax                     ; BX = absolute address of the word
+    add word [bx], di              ; Add load_base (USER_PROG_BASE) to value
+    loop .run_patch_loop
+
+    ; Entry point from v2 header
+    mov ax, [di + 10]              ; entry_offset (file-relative)
+    add ax, di                     ; Convert to absolute address
+    mov [run_entry_addr], ax
+    jmp .run_do_exec
+
+.run_no_relocs:
+    ; Legacy v1 program — entry at fixed offset 6
+    mov ax, USER_PROG_BASE + MNEX_HDR_SIZE
+    mov [run_entry_addr], ax
+
+.run_do_exec:
     ; --- Step 9: Save shell state for SYS_EXIT --------------------------------
     ; Save SP-2 (where the return address will be after `call`)
     mov ax, sp
@@ -156,7 +197,8 @@ run_skip_spaces:
     pop si
     pop bx
 
-    call USER_PROG_BASE + MNEX_HDR_SIZE  ; Near call to entry point (offset 6)
+    ; Indirect call to program entry via register (avoids relocation issues)
+    call [run_entry_addr]
 
     ; --- Program returned (via ret or SYS_EXIT) -------------------------------
     ; Print a newline and return to prompt

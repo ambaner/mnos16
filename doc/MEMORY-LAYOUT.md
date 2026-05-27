@@ -52,7 +52,7 @@ or data in real mode — they are memory-mapped hardware regions.
 
 ---
 
-## 2. mini-os Memory Map (v0.9.6)
+## 2. mini-os Memory Map (v0.9.14)
 
 mini-os uses the lower portion of conventional memory (0x0500–0xF7FF).  The
 layout was designed around four constraints:
@@ -79,29 +79,29 @@ Address       Size      Contents                 Lifetime
 
 0x0000:0x0610   496 B   (Unused gap)              Available for future use
 
-0x0000:0x0800  8192 B   LOADER.SYS (boot-time)    LOADER runs here during
-               (8 KB     (3 sectors = 1.5 KB used) boot, then dead.  KERNEL
-                max)                                overwrites with FS.SYS ↓
+0x0000:0x0800  ────── MODULE_FIRST_BASE ──────    Dynamic module area
+               (up to   System modules packed     Kernel loads FS.SYS,
+                ~18 KB)  sequentially by kernel:   MM.SYS, SHELL.SYS
+                         ├── FS.SYS (~2.5 KB)     here at boot time.
+                         ├── MM.SYS (~1 KB)       Addresses determined
+                         └── SHELL.SYS (~7 KB)    dynamically via v2
+                                                   relocation patching.
+                         Ends before 0x5000.
 
-                         FS.SYS (runtime)          Permanent after kernel
-                         (5 sectors = 2.5 KB used, init.  Installs INT 0x81
-                          5.5 KB growth room)       filesystem handler, caches
-                                                    MNFS directory (512 B)
-
-0x0000:0x2800  2048 B   MM.SYS                    Permanent (OS runtime)
-               (2 KB    (1 sector = 512 B release, Loaded by KERNEL, installs
-                max)     2 sectors = 1 KB debug)    INT 0x82 memory manager,
-                                                    manages heap at 0x8000
-
-0x0000:0x3000  8192 B   SHELL.SYS                 Permanent (OS runtime)
-               (8 KB     (18 sectors = 9 KB used)  Loaded by KERNEL, runs
-                max)                                 as user-mode executable
-                                                    via INT 0x80 syscalls
+0x0000:0x4E00   512 B   DIR_SCRATCH_BUF           Boot-time directory
+                         (within module area)       scratch (loader uses
+                                                    this for MNFS lookup)
 
 0x0000:0x5000  8192 B   KERNEL.SYS                Permanent (OS runtime)
-               (8 KB     (8 sectors = 4 KB used,   Loaded by LOADER, installs
-                max)      4 KB growth room)         INT 0x80 syscall handler,
-                                                    loads FS.SYS + MM.SYS + SHELL
+               (8 KB     (8 sectors = 4 KB used,   Loaded by LOADER at
+                max)      4 KB growth room)         fixed address, keeps
+                                                    [ORG 0x5000].  Installs
+                                                    INT 0x80 syscall handler,
+                                                    loads and relocates all
+                                                    system modules.
+
+0x0000:0x6C00           Stack canary zone          Debug builds: sentinel
+                                                    value planted by kernel
 
 0x0000:0x7000  3072 B   Stack zone (grows ↓)      Active (see §3)
                (3 KB)    SP starts at 0x7C00,
@@ -116,9 +116,10 @@ Address       Size      Contents                 Lifetime
                 max)                                — dead after boot
 
 0x0000:0x8000  30720 B  TPA (Transient Prog Area)  User programs loaded here
-               (30 KB)   Programs loaded by shell   via `run` command. ORG 0x8000.
-                          `run` command, validated    Discarded on return.
-                          (MNEX magic, attributes)
+               (30 KB)   Programs loaded by shell   via implicit execution.
+                          with v2 relocation         Assembled at ORG 0,
+                          patching at load time.     relocated to 0x8000.
+                          Discarded on return.
 
 0x0000:0xF800           (End of TPA)               0xF7FF is last usable byte
 
@@ -155,75 +156,54 @@ available but is sometimes used by BIOS for temporary purposes during POST.
 We chose 0x0600 to avoid any possible conflict, while keeping it low enough
 that no boot binary would be placed there.
 
-#### FS.SYS / LOADER.SYS — 0x0800 (up to 8 KB)
+#### System Module Area — 0x0800 to ~0x4E00 (dynamic)
 
-This memory region serves a dual purpose:
+Starting in v0.9.14, the region from MODULE_FIRST_BASE (0x0800) to just below
+the kernel (0x5000) holds all system modules, packed sequentially by the kernel
+at boot time.  Module positions are **not fixed** — they depend on the size of
+each preceding module.
 
-1. **Boot time**: The VBR loads LOADER.SYS here.  The loader enables A20, loads
-   the kernel to 0x5000, and jumps to it.  After the jump, LOADER's code is dead.
+**Boot-time dual use**: During boot, LOADER.SYS occupies 0x0800 temporarily.
+After the loader jumps to the kernel, its code is dead.  The kernel then loads
+FS.SYS starting at 0x0800 (overwriting the loader), followed by MM.SYS and
+SHELL.SYS at the next available addresses.
 
-2. **Runtime**: The kernel then loads FS.SYS to the same address (0x0800),
-   overwriting the now-dead loader.  FS.SYS installs the INT 0x81 filesystem
-   handler and caches the MNFS directory table in a 512-byte buffer.
+**Current layout** (typical, depends on build):
 
-**Contents** (v0.9.11): INT 0x81 dispatcher with 7 functions (list, find, read,
-get_info, write, delete, rename), 512-byte directory cache, initialization
-routine, tombstone-based deletion (name[0]=0xE5), contiguous sector allocation
-with high-water-mark tracking.
+| Module | Typical address | Sectors | Size |
+|--------|----------------|---------|------|
+| FS.SYS | 0x0800 | 5 | 2560 B |
+| MM.SYS | ~0x1200 | 2 | 1024 B |
+| SHELL.SYS | ~0x1A00 | 14 | 7168 B |
+| (end) | ~0x3600 | — | — |
 
-**Current size**: 5 sectors (2560 bytes).  **Maximum**: 16 sectors (8192 bytes)
-ending at 0x27FF.
+These addresses are approximate.  The actual positions include the v2 header
++ relocation table prepended by `pack_module.py`.  The kernel uses the v2
+header's `reloc_count` and `entry_offset` to patch each module and compute
+its entry point.
 
-**Lifetime**: Permanent after kernel init — FS.SYS must remain resident because
-all user-mode filesystem access (e.g., `dir` command) calls INT 0x81.
+**Maximum**: MODULE_AREA_END (0x5000).  If modules exceed this boundary, the
+kernel would overwrite itself.  The build system validates total module size.
 
-#### KERNEL.SYS — 0x5000 (up to 8 KB)
+**Lifetime**: All modules are permanent after kernel init — they must remain
+resident because the shell and user programs call into them via INT vectors.
+
+#### KERNEL.SYS — 0x5000 (fixed, up to 8 KB)
 
 The loader loads KERNEL.SYS to linear address 0x5000 (segment 0x0000, offset
-0x5000).  The kernel is assembled with `[ORG 0x5000]`.
+0x5000).  The kernel is assembled with `[ORG 0x5000]` — it is the **only**
+system binary that retains a hardcoded ORG, because the loader that places it
+is too simple to perform relocation.
 
-**Contents** (v0.6.0): INT 0x80 IVT installation, 27 syscall handlers wrapping
-BIOS interrupts (video, keyboard, disk, memory, CPUID, BDA access, etc.),
-find_file.inc for MNFS directory lookup, loads FS.SYS and SHELL.SYS from disk,
-version info, and utility functions.
+**Contents** (v0.9.14): INT 0x80 IVT installation, 27+ syscall handlers,
+module loading with dynamic placement and `apply_relocs` subroutine, version
+info, `next_base` tracking for sequential module placement.
 
-**Current size**: 7 sectors (3584 bytes), ending at 0x5DFF.  **Maximum**:
+**Current size**: 8 sectors (4096 bytes), ending at 0x5FFF.  **Maximum**:
 16 sectors (8192 bytes), ending at 0x6FFF.
 
 **Lifetime**: Permanent — the kernel must remain resident for the entire OS
 runtime because the shell and all user-mode programs call into it via INT 0x80.
-
-#### SHELL.SYS — 0x3000 (up to 8 KB)
-
-The kernel loads SHELL.SYS to linear address 0x3000 (segment 0x0000, offset
-0x3000).  The shell is assembled with `[ORG 0x3000]`.
-
-**Contents** (v0.9.13): Command loop, shell commands (mem, dir, ver, help, cls,
-reboot, copy, del, ren), implicit program execution (loads .MNX files), thin
-syscall wrappers (hardware via INT 0x80, filesystem via INT 0x81), strcmp,
-readline, argument parser, string constants, and runtime data buffers.
-
-**Current size**: 13 sectors (6656 bytes), ending at 0x49FF.  **Maximum**:
-16 sectors (8192 bytes), ending at 0x4FFF.  The kernel at 0x5000 sets the
-upper boundary.
-
-**Runtime data buffers within SHELL.SYS**:
-
-| Buffer | Size | Purpose |
-|--------|------|---------|
-| `cmd_buf` | 32 B | Keyboard input (31 chars + NUL) |
-| `cmd_len` | 1 B | Current input length |
-| `dir_buffer` | 512 B | MNFS directory data (from FS_LIST_FILES) |
-| `e820_buf` | 20 B | Single INT 15h E820 memory map entry |
-| `cpuid_vendor` | 13 B | CPUID vendor string (12 chars + NUL) |
-| `cpuid_ver` | 4 B | CPUID version (family/model/stepping) |
-| `cpuid_feat_edx` | 4 B | CPUID feature flags (EDX) |
-| `cpuid_feat_ecx` | 4 B | CPUID feature flags (ECX) |
-
-These buffers are embedded within the SHELL.SYS binary (in the `.data`-like
-trailing section) and loaded into memory as part of the shell.  They are
-initialized to zero by the `times N db 0` directives and written at runtime
-by the corresponding commands.
 
 #### VBR — 0x7C00 (boot-time only, 1 KB)
 

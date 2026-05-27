@@ -1,7 +1,10 @@
 ; =============================================================================
 ; MNOS16 Filesystem Module (FS.SYS) - MNFS Driver
 ;
-; Loaded by KERNEL.SYS into memory at 0x0800 (reusing LOADER.SYS's slot).
+; Relocatable system module — loaded by KERNEL.SYS at a dynamic address
+; (currently 0x0800, replacing LOADER.SYS's slot).  Assembled with ORG 0
+; and relocated at load time via MNEX v2 header.
+;
 ; Provides filesystem services via INT 0x81 — fully decoupled from the
 ; kernel's INT 0x80 interface.
 ;
@@ -10,12 +13,8 @@
 ;   User mode (SHELL)  →  INT 0x81  →  FS.SYS  →  INT 0x80  →  KERNEL  →  BIOS
 ;
 ; Initialization:
-;   The kernel calls our init entry point (offset 6) after loading.
+;   The kernel calls our init entry point after loading and relocating.
 ;   Init installs INT 0x81 in the IVT and caches the MNFS directory.
-;
-; Header layout (first 6 bytes):
-;   Offset 0: 'MNFS'   Magic identifier (4 bytes)
-;   Offset 4: dw N     Module size in sectors
 ;
 ; INT 0x81 functions (AH = function number):
 ;   0x01  FS_LIST_FILES  — Copy cached directory to caller's buffer
@@ -25,7 +24,7 @@
 ;
 ; See doc/FILESYSTEM.md for the complete specification.
 ;
-; Assembled with:  nasm -f bin -o fs.sys src/fs/fs.asm
+; Build: assembled by gen_relocs.py + pack_module.py (see tools/build.ps1)
 ; =============================================================================
 
 %include "bib.inc"
@@ -34,17 +33,13 @@
 %include "debug.inc"
 
 [BITS 16]
-[ORG 0x0800]                        ; Loaded at LOADER's old address
 
-; =============================================================================
-; FS.SYS HEADER
-; =============================================================================
-fs_magic        db 'MNFS'           ; Magic identifier — filesystem module
-%ifdef DEBUG
-fs_sectors      dw 8                ; Module size in sectors (debug build)
-%else
-fs_sectors      dw 5                ; Module size in sectors (release build)
+; Relocatable module — assembled at ORG 0, relocated at load time.
+; The MNEX v2 header and relocation table are added by pack_module.py.
+%ifndef RELOC_BASE
+%define RELOC_BASE 0
 %endif
+[ORG RELOC_BASE]
 
 ; =============================================================================
 ; fs_init — Initialize the filesystem module
@@ -1268,10 +1263,5 @@ fs_dbg_rf_nf:    db '[FS] RF: not_found', 0
 %include "serial.inc"
 
 ; =============================================================================
-; PADDING — fill to sector boundary
+; END OF MODULE — no padding; pack_module.py handles sector alignment
 ; =============================================================================
-%ifdef DEBUG
-times (8 * 512) - ($ - $$) db 0
-%else
-times (5 * 512) - ($ - $$) db 0
-%endif

@@ -106,6 +106,63 @@ function Build-Binary {
     }
 }
 
+function Build-RelocModule {
+    <#
+    .SYNOPSIS
+        Build a relocatable system module (MNEX v2 format).
+    .DESCRIPTION
+        1. Assembles source at ORG 0 (raw binary, no header)
+        2. Runs gen_relocs.py to produce relocation table (.rel)
+        3. Runs pack_module.py to produce final .SYS with v2 header
+    #>
+    param(
+        [string]$Name,
+        [string]$AsmPath,
+        [string]$BinPath,
+        [string]$Magic,
+        [switch]$Debug
+    )
+    $label = if ($Debug) { "Building relocatable ${Name} (DEBUG)..." } else { "Building relocatable ${Name}..." }
+    Write-Step $label
+
+    $srcDir = Split-Path $AsmPath -Parent
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($BinPath)
+    $rawBin = Join-Path $BuildDir "${baseName}_raw.bin"
+    $relFile = Join-Path $BuildDir "${baseName}.rel"
+
+    # Common NASM flags
+    $commonFlags = @('-I', "$IncludeDir/", '-I', "$srcDir/")
+    if ($Debug) { $commonFlags = @('-dDEBUG') + $commonFlags }
+
+    # Step 1: Assemble raw binary (ORG 0) — this is what goes into the module
+    $flags = @('-f', 'bin') + $commonFlags + @('-o', $rawBin, $AsmPath)
+    & $nasm @flags
+    if ($LASTEXITCODE -ne 0) { throw "NASM assembly of $Name (raw) failed." }
+
+    # Step 2: Generate relocation table via gen_relocs.py
+    $genRelocs = Join-Path $ToolsDir 'gen_relocs.py'
+    $genArgs = @(
+        $genRelocs, $AsmPath,
+        '--nasm', $nasm,
+        '--header-size', '0',
+        '-I', "$IncludeDir/",
+        '-I', "$srcDir/",
+        '-o', $relFile
+    )
+    if ($Debug) { $genArgs += @('-D', 'DEBUG') }
+    & $python @genArgs
+    if ($LASTEXITCODE -ne 0) { throw "gen_relocs.py failed for $Name." }
+
+    # Step 3: Package with pack_module.py
+    $packModule = Join-Path $ToolsDir 'pack_module.py'
+    & $python $packModule $rawBin $relFile --magic $Magic --pad-sectors -o $BinPath
+    if ($LASTEXITCODE -ne 0) { throw "pack_module.py failed for $Name." }
+
+    $size = (Get-Item $BinPath).Length
+    $sectors = [math]::Ceiling($size / 512)
+    Write-Step "  $([System.IO.Path]::GetFileName($BinPath)): $size bytes ($sectors sectors)"
+}
+
 function Get-NasmPath {
     $found = Get-Command nasm -ErrorAction SilentlyContinue
     if ($found) { return $found.Source }
@@ -148,6 +205,10 @@ $nasm = Get-NasmPath
 if (-not $nasm) { $nasm = Install-Nasm }
 Write-Step "Using NASM: $nasm"
 
+# ---------- Python (needed for relocation tools) ----------------------------
+$python = (Get-Command python -ErrorAction SilentlyContinue).Source
+if (-not $python) { throw "Python not found on PATH — required for relocatable module builds." }
+
 # ---------- assemble shared binaries ----------------------------------------
 Build-Binary -Name 'MBR'    -AsmPath $MbrAsm    -BinPath $MbrBin    -ExpectedSize 512
 Build-Binary -Name 'VBR'    -AsmPath $VbrAsm    -BinPath $VbrBin
@@ -155,19 +216,19 @@ Build-Binary -Name 'LOADER' -AsmPath $LoaderAsm -BinPath $LoaderBin
 
 # ---------- assemble release variants ---------------------------------------
 Write-Step '--- Release variants ---'
-Build-Binary -Name 'FS'     -AsmPath $FsAsm     -BinPath $FsBin
-Build-Binary -Name 'KERNEL' -AsmPath $KernelAsm -BinPath $KernelBin
-Build-Binary -Name 'SHELL'  -AsmPath $ShellAsm  -BinPath $ShellBin
-Build-Binary -Name 'MM'     -AsmPath $MmAsm     -BinPath $MmBin
+Build-RelocModule -Name 'FS'     -AsmPath $FsAsm     -BinPath $FsBin     -Magic 'MNFS'
+Build-Binary      -Name 'KERNEL' -AsmPath $KernelAsm -BinPath $KernelBin
+Build-RelocModule -Name 'SHELL'  -AsmPath $ShellAsm  -BinPath $ShellBin  -Magic 'MNEX'
+Build-RelocModule -Name 'MM'     -AsmPath $MmAsm     -BinPath $MmBin     -Magic 'MNMM'
 
 # ---------- assemble debug variants -----------------------------------------
 Write-Step '--- Debug variants ---'
-Build-Binary -Name 'FSD'     -AsmPath $FsAsm     -BinPath $FsDbgBin     -Debug
-Build-Binary -Name 'KERNELD' -AsmPath $KernelAsm -BinPath $KernelDbgBin -Debug
-Build-Binary -Name 'SHELLD'  -AsmPath $ShellAsm  -BinPath $ShellDbgBin  -Debug
-Build-Binary -Name 'MMD'     -AsmPath $MmAsm     -BinPath $MmDbgBin     -Debug
+Build-RelocModule -Name 'FSD'     -AsmPath $FsAsm     -BinPath $FsDbgBin     -Magic 'MNFS' -Debug
+Build-Binary      -Name 'KERNELD' -AsmPath $KernelAsm -BinPath $KernelDbgBin -Debug
+Build-RelocModule -Name 'SHELLD'  -AsmPath $ShellAsm  -BinPath $ShellDbgBin  -Magic 'MNEX' -Debug
+Build-RelocModule -Name 'MMD'     -AsmPath $MmAsm     -BinPath $MmDbgBin     -Magic 'MNMM' -Debug
 
-# ---------- assemble user programs ------------------------------------------
+# ---------- assemble user programs (relocatable, MNEX v2) -------------------
 Write-Step '--- User programs ---'
 $ProgramsDir = Join-Path $Root 'src\programs'
 $ProgramOut  = @()
@@ -180,7 +241,7 @@ if (Test-Path $ProgramsDir) {
         if ($prog.Name -in $SkipPrograms) { continue }
         $outName = [System.IO.Path]::GetFileNameWithoutExtension($prog.Name) + '.mnx'
         $outPath = Join-Path $BuildDir $outName
-        Build-Binary -Name $outName.ToUpper() -AsmPath $prog.FullName -BinPath $outPath
+        Build-RelocModule -Name $outName.ToUpper() -AsmPath $prog.FullName -BinPath $outPath -Magic 'MNEX'
         $ProgramOut += $outPath
     }
     # Also build programs in subdirectories (e.g., src/programs/edit/edit.asm)
@@ -192,7 +253,7 @@ if (Test-Path $ProgramsDir) {
             $outPath = Join-Path $BuildDir $outName
             # Skip if already built from top-level (avoids double-build during transition)
             if ($outPath -notin $ProgramOut) {
-                Build-Binary -Name $outName.ToUpper() -AsmPath $mainAsm -BinPath $outPath
+                Build-RelocModule -Name $outName.ToUpper() -AsmPath $mainAsm -BinPath $outPath -Magic 'MNEX'
                 $ProgramOut += $outPath
             }
         }

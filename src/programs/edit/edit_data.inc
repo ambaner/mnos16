@@ -93,6 +93,3 @@ help_lines:
 .h13 db '   Ctrl+F       Find, Ctrl+H Replace      ', 0
 .h14 db '   Alt+X        Exit editor               ', 0
 .h15 db '   F1           This help                 ', 0
-
-; Pad to sector boundary
-times (512 - (($ - $$) % 512)) % 512 db 0

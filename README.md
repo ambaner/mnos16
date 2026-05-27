@@ -1,11 +1,11 @@
 # MNOS16
 
 A minimalistic 16-bit operating system built from scratch in x86 assembly —
-currently at **v0.9.13**.  Features a multi-stage boot loader, a
-microkernel-style architecture with separate modules for filesystem and memory
-management, and an interactive shell that can load and run user programs.
-Targets Hyper-V Gen 1 VMs with a unified VHD containing both Release and Debug
-configurations.
+currently at **v0.9.14**.  Features a multi-stage boot loader, a
+microkernel-style architecture with separate relocatable modules for filesystem
+and memory management, and an interactive shell that can load and run user
+programs.  Targets Hyper-V Gen 1 VMs with a unified VHD containing both Release
+and Debug configurations.
 
 ![MNOS16 booting in Hyper-V](doc/booted.gif)
 
@@ -90,7 +90,7 @@ VHD — no need to rebuild or swap images.
 After the boot chain completes, you'll see the shell:
 
 ```
-  MNOS v0.9.13 [Release]
+  MNOS v0.9.14 [Release]
 
 mnos:\>
 ```
@@ -128,6 +128,7 @@ mini-os/
 │       ├── build.yml         # CI — build & verify on push/PR
 │       └── release.yml       # CD — package & release on version tags
 ├── doc/
+│   ├── ABI.md                # Application Binary Interface contract (portability guarantee)
 │   ├── DESIGN.md             # Architecture & design document
 │   ├── DEBUGGING.md          # Debug infrastructure (serial, asserts, faults, canary)
 │   ├── EDITOR.md             # EDIT.MNX text editor design (gap buffer, dialogs, search)
@@ -161,15 +162,15 @@ mini-os/
 │   ├── loader/
 │   │   └── loader.asm         # Stage-2 loader — A20 gate, boot menu, loads KERNEL
 │   ├── kernel/
-│   │   ├── kernel.asm         # 16-bit kernel — INT 0x80 syscalls, loads FS + MM + SHELL
+│   │   ├── kernel.asm         # 16-bit kernel — INT 0x80 syscalls, module loader + relocation
 │   │   ├── kernel_syscall.inc # Syscall dispatcher + 29 handlers (jump table)
 │   │   ├── kernel_data.inc    # Kernel string constants, filenames, DAP
 │   │   ├── kernel_fault.inc   # CPU exception fault handlers + PIC remap
 │   │   └── kernel_stack.inc   # Stack canary (debug-only overflow detection)
 │   ├── mm/
-│   │   └── mm.asm             # Memory manager — INT 0x82 API, heap allocator
+│   │   └── mm.asm             # Memory manager — INT 0x82 API, heap (relocatable)
 │   ├── fs/
-│   │   └── fs.asm             # Filesystem module — INT 0x81 API, MNFS directory cache
+│   │   └── fs.asm             # Filesystem module — INT 0x81 API, MNFS (relocatable)
 │   ├── programs/
 │   │   ├── edit/              # EDIT.MNX — full-screen text editor
 │   │   │   ├── edit.asm       #   Entry point, constants, MNEX header
@@ -194,7 +195,7 @@ mini-os/
 │   │   ├── hello.asm          # HELLO.MNX — first user-mode demo program
 │   │   └── mnmon.asm          # MNMON.MNX — interactive machine monitor (WinDbg-style)
 │   └── shell/
-│       ├── shell.asm          # Shell entry point — init, command loop, dispatch
+│       ├── shell.asm          # Shell entry point — init, command loop, dispatch (relocatable)
 │       ├── shell_cmd_simple.inc   # Simple commands (ver, help, cls, reboot)
 │       ├── shell_cmd_dir.inc      # dir command (MNFS directory listing)
 │       ├── shell_cmd_fs.inc       # File commands (copy, del, ren)
@@ -205,9 +206,11 @@ mini-os/
 │       └── shell_data.inc         # String constants + runtime data buffers
 ├── tools/
 │   ├── build.ps1              # Build logic — assembles all binaries, creates VHD
+│   ├── gen_relocs.py          # Relocation table generator (delta comparison)
+│   ├── pack_module.py         # Module packager (pre-biasing + v2 header)
 │   ├── create-disk.ps1        # Partitioned raw disk image creator
 │   ├── create-vhd.bat         # VHD tool — batch wrapper
-│   ├── create-vhd.ps1         # Raw image → VHD converter (pure PowerShell)
+│   ├── create-vhd.ps1        # Raw image → VHD converter (pure PowerShell)
 │   ├── setup-vm.ps1           # Hyper-V VM create/update logic
 │   ├── read-serial.ps1        # Read COM1 debug output from running VM
 │   └── nasm/                  # Auto-downloaded NASM (gitignored)
@@ -216,10 +219,10 @@ mini-os/
 │       ├── mbr.bin            # MBR binary
 │       ├── vbr.bin            # VBR binary (2 sectors)
 │       ├── loader.sys         # LOADER (3 sectors, shared)
-│       ├── fs.sys             # FS — release (5 sectors)
+│       ├── fs.sys             # FS — release, relocatable (5 sectors)
 │       ├── kernel.sys         # KERNEL — release (8 sectors)
-│       ├── shell.sys          # SHELL — release (13 sectors)
-│       ├── mm.sys             # MM — release (2 sectors)
+│       ├── shell.sys          # SHELL — release, relocatable (13 sectors)
+│       ├── mm.sys             # MM — release, relocatable (2 sectors)
 │       ├── edit.mnx            # EDIT — text editor (13 sectors)
 │       ├── sysinfo.mnx        # SYSINFO — system info (6 sectors)
 │       ├── mnmon.mnx          # MNMON — machine monitor (5 sectors)
@@ -254,6 +257,7 @@ mini-os/
 │   ├── test_mm.py             # 29 tests for memory manager
 │   ├── test_parse_args.py     # 15 tests for shell_parse_args
 │   ├── test_parse_filename.py # 9 tests for run_parse_filename
+│   ├── test_relocation.py     # 39 tests for relocation toolchain and patching
 │   └── test_strcmp.py          # 11 tests for strcmp
 ├── CHANGELOG.md
 ├── CODE_OF_CONDUCT.md
@@ -278,9 +282,9 @@ python -m pytest tests/ -v
 python -m pytest tests/ -v    # coverage is auto-generated on session finish
 ```
 
-**176 tests** across 7 modules: `shell_parse_args` (15), `run_parse_filename` (9),
+**217 tests** across 8 modules: `shell_parse_args` (15), `run_parse_filename` (9),
 `strcmp` (11), `mm_allocator` (29), `fs_write` (26), `cmdmatch` (12),
-`editor` (58), `memory_layout` (16).
+`editor` (58), `memory_layout` (16), `relocation` (39).
 Tests run automatically in CI via GitHub Actions.
 
 **Coverage metrics:**
@@ -340,6 +344,10 @@ Additional deep-dive documents:
   modular .inc architecture, modal dialog system, Find/Replace engine, memory
   layout, color scheme, key dispatch, and file I/O integration.
 
+- **[doc/ABI.md](doc/ABI.md)** — Application Binary Interface contract: TPA
+  layout, syscall conventions, entry state, unknown-syscall error handling,
+  and the binary portability guarantee for .MNX programs across OS versions.
+
 ## Version History
 
 Each version is a tagged release you can checkout to see the project at that stage.
@@ -377,6 +385,7 @@ Each version is a tagged release you can checkout to see the project at that sta
 | `v0.9.11` | **MNFS Write Support** | FS write/delete/rename syscalls (INT 0x81 AH=0x06–0x08); tombstone deletion; shell `copy`, `del`, `ren` commands; `cmdmatch` prefix dispatcher; 102 unit tests (95% branch on FS); FS.SYS 3→5 sectors; SHELL.SYS 16→18 sectors |
 | `v0.9.12` | **Text Editor + MNOS16 Rename** | Full-screen editor (EDIT.MNX); gap buffer; modal dialogs; Find/Replace All (F4); menu hotkeys; project renamed to MNOS16; implicit execution (no built-in `edit` command) |
 | `v0.9.13` | **Sysinfo Extraction + Layout Tightening** | `sysinfo` extracted from shell into standalone SYSINFO.MNX (6 sectors); shell shrunk 19→13 sectors; kernel relocated 0x5800→0x5000; stack doubled 2→4 KB; 16 memory-layout consistency tests; 176 total tests |
+| `v0.9.14` | **Relocatable Modules + ABI Contract** | All binaries (system modules FS/MM/SHELL AND user programs .MNX) now assembled with ORG 0 and relocated at load time via MNEX v2 headers; gen_relocs.py + pack_module.py toolchain; kernel apply_relocs for modules, shell apply_relocs for programs; dynamic module placement; formal ABI contract (doc/ABI.md); full binary portability; 35 relocation unit tests; 213 total tests |
 
 ```cmd
 git checkout v0.1.0      # see the project at any prior milestone

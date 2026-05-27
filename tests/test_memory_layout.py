@@ -1,20 +1,22 @@
 """Memory layout consistency tests.
 
-Validates that the fixed memory addresses in memory.inc are internally
-consistent — i.e., no component overlaps another, the stack canary fits
-between the kernel and the stack, and the TPA is above all resident data.
+Validates that the memory layout constants in memory.inc are internally
+consistent — i.e., no component overlaps another, the module area is properly
+bounded, the stack canary fits between the kernel and the stack, and the TPA
+is above all resident data.
 
-These tests catch mistakes when someone changes component sizes or moves
-addresses without updating the entire chain.
+With v0.9.14's relocatable modules, FS/MM/SHELL positions are dynamic (packed
+sequentially from MODULE_FIRST_BASE by the kernel).  These tests validate the
+fixed anchors and invariants — actual module overlap is checked at boot time.
 """
 
 import pytest
 from tests.harness.constants import (
     LOADER_OFF,
     KERNEL_OFF,
-    SHELL_OFF,
-    MM_OFF,
-    MM_MAX_SECTORS,
+    MODULE_FIRST_BASE,
+    MODULE_AREA_END,
+    DIR_SCRATCH_BUF,
     STACK_CANARY_ADDR,
     STACK_CANARY_SIZE,
     USER_PROG_BASE,
@@ -26,36 +28,41 @@ from tests.harness.constants import (
 
 # --- Layout parameters (sector sizes = maximum allowed) -----------------------
 SECTOR = 512
-LOADER_MAX_SECTORS = 16          # 8 KB max (also FS.SYS at runtime)
-MM_MAX = MM_MAX_SECTORS          # 4 sectors (2 KB)
-SHELL_MAX_SECTORS = 16           # 8 KB max (reduced from 20 after sysinfo extraction)
 KERNEL_MAX_SECTORS_RELEASE = 8   # 4 KB
 KERNEL_MAX_SECTORS_DEBUG = 14    # 7 KB (debug adds serial, asserts, canary code)
 SP_INITIAL = 0x7C00              # Set by MBR, stack grows downward
 
 
-class TestComponentNoOverlap:
-    """Verify no two resident components overlap in memory."""
+class TestModuleAreaLayout:
+    """Verify module area anchors are consistent."""
 
-    def test_loader_below_mm(self):
-        """LOADER/FS (0x0800) must end before MM (0x2800)."""
-        loader_end = LOADER_OFF + LOADER_MAX_SECTORS * SECTOR
-        assert loader_end <= MM_OFF, (
-            f"LOADER/FS max end 0x{loader_end:04X} overlaps MM at 0x{MM_OFF:04X}"
+    def test_module_first_base_is_loader_off(self):
+        """First module replaces LOADER at 0x0800."""
+        assert MODULE_FIRST_BASE == LOADER_OFF
+
+    def test_module_area_end_is_kernel(self):
+        """Module area must end at kernel start."""
+        assert MODULE_AREA_END == KERNEL_OFF
+
+    def test_module_area_has_space(self):
+        """Module area must be at least 8 KB (to fit minimal FS+MM+SHELL)."""
+        area_size = MODULE_AREA_END - MODULE_FIRST_BASE
+        assert area_size >= 8 * 1024, (
+            f"Module area is only {area_size} bytes — too small"
         )
 
-    def test_mm_below_shell(self):
-        """MM.SYS must end before SHELL.SYS."""
-        mm_end = MM_OFF + MM_MAX * SECTOR
-        assert mm_end <= SHELL_OFF, (
-            f"MM max end 0x{mm_end:04X} overlaps SHELL at 0x{SHELL_OFF:04X}"
+    def test_dir_scratch_buf_in_module_area(self):
+        """Directory scratch buffer must be within module area bounds."""
+        assert MODULE_FIRST_BASE <= DIR_SCRATCH_BUF < MODULE_AREA_END, (
+            f"DIR_SCRATCH_BUF 0x{DIR_SCRATCH_BUF:04X} outside module area "
+            f"(0x{MODULE_FIRST_BASE:04X}–0x{MODULE_AREA_END:04X})"
         )
 
-    def test_shell_below_kernel(self):
-        """SHELL.SYS max must not overlap KERNEL.SYS."""
-        shell_end = SHELL_OFF + SHELL_MAX_SECTORS * SECTOR
-        assert shell_end <= KERNEL_OFF, (
-            f"SHELL max end 0x{shell_end:04X} overlaps KERNEL at 0x{KERNEL_OFF:04X}"
+    def test_dir_scratch_buf_near_kernel(self):
+        """Scratch buffer should be near top of module area (won't be overwritten)."""
+        assert DIR_SCRATCH_BUF >= MODULE_AREA_END - 1024, (
+            f"DIR_SCRATCH_BUF 0x{DIR_SCRATCH_BUF:04X} is too far from kernel — "
+            f"risks being overwritten by modules"
         )
 
     def test_kernel_debug_below_canary(self):

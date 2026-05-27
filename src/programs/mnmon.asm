@@ -10,7 +10,8 @@
 ;   ?               — help
 ;   q               — quit to shell
 ;
-; Loaded into the Transient Program Area (TPA) at 0x9000.
+; Relocatable user-mode executable (MNEX v2 format).
+; The shell applies relocations at load time — binary portable across versions.
 ; Returns to shell via `ret`.
 ;
 ; Build: nasm -f bin -I src/include/ -o build/boot/mnmon.mnx src/programs/mnmon.asm
@@ -25,16 +26,13 @@
 %include "mnfs.inc"
 
 [BITS 16]
-[ORG USER_PROG_BASE]                ; 0x9000
+%ifndef RELOC_BASE
+%define RELOC_BASE 0
+%endif
+[ORG RELOC_BASE]
 
 ; =============================================================================
-; MNEX HEADER (6 bytes)
-; =============================================================================
-            db 'MNEX'               ; Magic — user-mode executable
-            dw 5                    ; Size in sectors (2560 bytes)
-
-; =============================================================================
-; ENTRY POINT (offset 6)
+; ENTRY POINT
 ; =============================================================================
 entry:
     ; Print banner
@@ -1018,5 +1016,3 @@ mon_dir_buf     equ (USER_PROG_BASE + 4 * 512)  ; 0x9800
 
 ; =============================================================================
 ; PADDING — fill to 5 sectors (2560 bytes)
-; =============================================================================
-times (5 * 512) - ($ - $$) db 0

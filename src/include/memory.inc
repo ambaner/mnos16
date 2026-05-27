@@ -5,11 +5,14 @@
 ; All components use segment 0x0000 (flat real-mode addressing).
 ;
 ; Memory map (low → high):
-;   0x0600  Boot Info Block (BIB)   — 6 bytes, shared boot data
-;   0x0800  LOADER.SYS              — up to 8 KB (16 sectors)
-;   0x3000  SHELL.SYS               — up to 8 KB (16 sectors)
+;   0x0600  Boot Info Block (BIB)   — 7 bytes, shared boot data
+;   0x0800  MODULE_FIRST_BASE       — FS.SYS, then MM.SYS, then SHELL.SYS
+;           (modules packed sequentially, positions determined at load time)
 ;   0x5000  KERNEL.SYS              — up to 7 KB (14 sectors)
 ;   0x7C00  VBR (boot-time only)    — 1 KB (2 sectors)
+;
+; System modules (FS/MM/SHELL) are relocatable — assembled with ORG 0 and
+; patched by the kernel at load time.  Their positions are NOT hardcoded.
 ;
 ; See doc/MEMORY-LAYOUT.md for the complete memory map.
 ; =============================================================================
@@ -20,8 +23,18 @@ LOADER_OFF   equ 0x0800             ; Offset for LOADER.SYS
 KERNEL_SEG   equ 0x0000             ; Segment for KERNEL.SYS
 KERNEL_OFF   equ 0x5000             ; Offset for KERNEL.SYS
 
-SHELL_SEG    equ 0x0000             ; Segment for SHELL.SYS
-SHELL_OFF    equ 0x3000             ; Offset for SHELL.SYS
+; --- Dynamic module placement -------------------------------------------------
+; System modules are loaded sequentially starting at MODULE_FIRST_BASE.
+; The kernel tracks next_base as it loads each module.
+; SHELL_SEG/SHELL_OFF/MM_SEG/MM_OFF are NO LONGER FIXED — they are computed
+; by the kernel at boot time based on actual module sizes.
+MODULE_FIRST_BASE equ 0x0800         ; First module loads here (FS.SYS)
+MODULE_AREA_END   equ 0x5000         ; Must not overlap kernel
+
+; Scratch buffer for directory reads during module loading.
+; Placed just below the kernel, safe from module packing (modules grow upward
+; from 0x0800 and are validated to not exceed MODULE_AREA_END).
+DIR_SCRATCH_BUF   equ 0x4E00         ; 512 bytes at 0x4E00–0x4FFF
 
 ; =============================================================================
 ; Stack canary constants
@@ -67,17 +80,14 @@ HMA_HEAP_SIZE   equ HMA_HEAP_END - HMA_HEAP_START  ; 65,264 bytes (~63.7 KB)
 ; =============================================================================
 ; Memory Manager (MNMM) constants
 ;
-; MM.SYS is loaded by the kernel at 0x2800, between the FS.SYS max boundary
-; and SHELL.SYS at 0x3000.  It provides heap allocation via INT 0x82.
+; MM.SYS is loaded dynamically by the kernel (immediately after FS.SYS).
+; It provides heap allocation via INT 0x82.
 ;
 ; The heap resides in the HMA (~64 KB above 1 MB, accessible via A20).
 ; The conventional heap at 0x8000 is kept only for test harness compatibility.
 ;
 ; See doc/MEMORY-MANAGER.md for the complete specification.
 ; =============================================================================
-MM_SEG          equ 0x0000           ; Segment for MM.SYS (flat model)
-MM_OFF          equ 0x2800           ; Offset for MM.SYS
-MM_MAX_SECTORS  equ 4                ; Max 4 sectors (2 KB) before SHELL
 
 HEAP_START      equ 0x8000           ; Legacy conventional heap start (test harness only)
 HEAP_END        equ 0x9000           ; Legacy conventional heap end (test harness only)

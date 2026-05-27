@@ -184,6 +184,11 @@ check_a20:
 ; sets SI to the correct kernel filename for load_kernel.
 ; =============================================================================
 boot_menu:
+    ; Ensure keyboard controller is enabled (defensive: A20 Method 2 disables
+    ; the 8042 keyboard temporarily; re-enable here in case of timing issues)
+    mov al, 0xAE                    ; 8042 command: enable keyboard
+    out 0x64, al
+
     ; Clear screen (set video mode 3 = 80x25 color text)
     mov ax, 0x0003
     int 0x10
@@ -193,6 +198,15 @@ boot_menu:
     call puts
 
 .menu_wait:
+    ; Flush any stale keys in BIOS buffer before waiting
+    mov ah, 0x01                    ; Check if key available (non-blocking)
+    int 0x16
+    jz .wait_key                    ; No key pending — go wait
+    xor ah, ah                      ; Consume the stale key
+    int 0x16
+    jmp .menu_wait                  ; Check for more stale keys
+
+.wait_key:
     ; Read keystroke (INT 16h AH=0: wait for key, AL=ASCII)
     xor ah, ah
     int 0x16
@@ -221,8 +235,8 @@ boot_menu:
 ; 11-byte 8.3 filename (fname_kernel or fname_kerneld).
 ; =============================================================================
 load_kernel:
-    ; Use 0x3000 (shell area) as scratch buffer for directory read
-    mov bx, SHELL_OFF               ; Scratch buffer (shell not loaded yet)
+    ; Use DIR_SCRATCH_BUF as scratch buffer for directory read (all module memory is free)
+    mov bx, DIR_SCRATCH_BUF         ; Scratch buffer
     ; SI already set by boot_menu to fname_kernel or fname_kerneld
     call find_file
     jc .kernel_fail

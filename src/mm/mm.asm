@@ -1,9 +1,12 @@
 ; =============================================================================
 ; MNOS16 Memory Manager (MM.SYS) — MNMM Heap Allocator with HMA Support
 ;
-; Loaded by KERNEL.SYS into memory at 0x2800.  Provides dynamic memory
-; allocation services via INT 0x82 — fully decoupled from the kernel's
-; INT 0x80 and the filesystem's INT 0x81.
+; Relocatable system module — loaded by KERNEL.SYS at a dynamic address
+; (immediately after FS.SYS).  Assembled with ORG 0 and relocated at load
+; time via MNEX v2 header.
+;
+; Provides dynamic memory allocation services via INT 0x82 — fully decoupled
+; from the kernel's INT 0x80 and the filesystem's INT 0x81.
 ;
 ; Architecture:
 ;   User mode (SHELL)  →  INT 0x82  →  MM.SYS  →  manages heap in HMA
@@ -42,24 +45,19 @@
 ;
 ; See doc/MEMORY-MANAGER.md for the complete specification.
 ;
-; Assembled with:  nasm -f bin -o mm.sys src/mm/mm.asm
+; Build: assembled by gen_relocs.py + pack_module.py (see tools/build.ps1)
 ; =============================================================================
 
 %include "memory.inc"
 %include "debug.inc"
 
 [BITS 16]
-[ORG MM_OFF]                         ; Loaded at 0x2800
 
-; =============================================================================
-; MM.SYS HEADER
-; =============================================================================
-mm_magic        db 'MNMM'           ; Magic identifier — memory manager
-%ifdef DEBUG
-mm_sectors      dw 3                 ; Module size in sectors (debug build)
-%else
-mm_sectors      dw 2                 ; Module size in sectors (release build)
+; Relocatable module — assembled at ORG 0, relocated at load time.
+%ifndef RELOC_BASE
+%define RELOC_BASE 0
 %endif
+[ORG RELOC_BASE]
 
 ; =============================================================================
 ; mm_init — Initialize the memory manager
@@ -712,10 +710,6 @@ mm_own_eq          db ' own=', 0
 %include "serial.inc"
 
 ; =============================================================================
-; PADDING — fill to sector boundary
 ; =============================================================================
-%ifdef DEBUG
-times (3 * 512) - ($ - $$) db 0
-%else
-times (2 * 512) - ($ - $$) db 0
-%endif
+; END OF MODULE — no padding; pack_module.py handles sector alignment
+; =============================================================================
