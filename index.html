@@ -5,184 +5,45 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MNOS16 — A Minimalistic 16 Bit Operating System</title>
     <style>
-        :root {
-            --primary: #0f172a;
-            --accent: #3b82f6;
-            --accent-hover: #2563eb;
-            --surface: #ffffff;
-            --surface-alt: #f8fafc;
-            --border: #e2e8f0;
-            --text: #1e293b;
-            --text-muted: #64748b;
-            --radius: 12px;
-        }
+        :root { --primary: #0f172a; --accent: #3b82f6; --accent-hover: #2563eb; --surface: #ffffff; --surface-alt: #f8fafc; --border: #e2e8f0; --text: #1e293b; --text-muted: #64748b; --radius: 12px; }
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            color: var(--text);
-            background: var(--surface-alt);
-            line-height: 1.6;
-        }
-        .hero {
-            background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
-            color: white;
-            padding: 4rem 2rem;
-            text-align: center;
-        }
-        .hero h1 {
-            font-size: 3rem;
-            font-weight: 700;
-            margin-bottom: 0.5rem;
-            letter-spacing: -0.02em;
-        }
-        .hero p {
-            font-size: 1.25rem;
-            opacity: 0.85;
-            max-width: 600px;
-            margin: 0 auto 1.5rem;
-        }
-        .hero .badges {
-            display: flex;
-            gap: 0.75rem;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-        .badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            background: rgba(255,255,255,0.1);
-            border: 1px solid rgba(255,255,255,0.2);
-            padding: 0.35rem 0.75rem;
-            border-radius: 999px;
-            font-size: 0.85rem;
-            color: rgba(255,255,255,0.9);
-        }
-        .container {
-            max-width: 1100px;
-            margin: 0 auto;
-            padding: 3rem 1.5rem;
-        }
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 1.5rem;
-            margin-top: 2rem;
-        }
-        .card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 1.75rem;
-            transition: box-shadow 0.2s;
-        }
-        .card:hover {
-            box-shadow: 0 4px 24px rgba(0,0,0,0.06);
-        }
-        .card h3 {
-            font-size: 1.1rem;
-            margin-bottom: 0.75rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        .card-icon {
-            width: 32px;
-            height: 32px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1rem;
-            flex-shrink: 0;
-        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--text); background: var(--surface-alt); line-height: 1.6; }
+        .hero { background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%); color: white; padding: 3rem 2rem 2rem; text-align: center; }
+        .hero h1 { font-size: 3rem; font-weight: 700; margin-bottom: 0.5rem; letter-spacing: -0.02em; }
+        .hero p { font-size: 1.25rem; opacity: 0.85; max-width: 600px; margin: 0 auto 1.5rem; }
+        .hero .badges { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
+        .badge { display: inline-flex; align-items: center; gap: 0.4rem; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); padding: 0.35rem 0.75rem; border-radius: 999px; font-size: 0.85rem; color: rgba(255,255,255,0.9); }
+        .hero-preview { max-width: 700px; margin: 2rem auto 0; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.4); }
+        .hero-preview img { width: 100%; display: block; }
+        .container { max-width: 1100px; margin: 0 auto; padding: 3rem 1.5rem; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-top: 2rem; }
+        .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.75rem; transition: box-shadow 0.2s; }
+        .card:hover { box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
+        .card h3 { font-size: 1.1rem; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem; }
+        .card-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; }
         .icon-docs { background: #dbeafe; color: #2563eb; }
         .icon-download { background: #dcfce7; color: #16a34a; }
         .icon-test { background: #fef3c7; color: #d97706; }
         .icon-source { background: #f3e8ff; color: #9333ea; }
-        .card ul {
-            list-style: none;
-            padding: 0;
-        }
-        .card li {
-            padding: 0.4rem 0;
-            border-bottom: 1px solid var(--border);
-        }
+        .card ul { list-style: none; padding: 0; }
+        .card li { padding: 0.4rem 0; border-bottom: 1px solid var(--border); }
         .card li:last-child { border-bottom: none; }
-        .card a {
-            color: var(--accent);
-            text-decoration: none;
-            font-weight: 500;
-        }
-        .card a:hover {
-            color: var(--accent-hover);
-            text-decoration: underline;
-        }
-        .section-title {
-            font-size: 1.75rem;
-            font-weight: 700;
-            margin-bottom: 0.25rem;
-        }
-        .section-subtitle {
-            color: var(--text-muted);
-            font-size: 1rem;
-        }
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            background: var(--accent);
-            color: white;
-            padding: 0.6rem 1.25rem;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 0.9rem;
-            transition: background 0.2s;
-        }
+        .card a { color: var(--accent); text-decoration: none; font-weight: 500; }
+        .card a:hover { color: var(--accent-hover); text-decoration: underline; }
+        .section-title { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; }
+        .section-subtitle { color: var(--text-muted); font-size: 1rem; }
+        .btn { display: inline-flex; align-items: center; gap: 0.5rem; background: var(--accent); color: white; padding: 0.6rem 1.25rem; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 0.9rem; transition: background 0.2s; }
         .btn:hover { background: var(--accent-hover); }
-        .btn-outline {
-            background: transparent;
-            border: 1.5px solid var(--border);
-            color: var(--text);
-        }
-        .btn-outline:hover {
-            background: var(--surface-alt);
-            border-color: var(--accent);
-            color: var(--accent);
-        }
-        .download-latest {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 1.5rem 1.75rem;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 1rem;
-            margin-top: 1rem;
-        }
-        .download-latest .version {
-            font-size: 1.25rem;
-            font-weight: 700;
-        }
-        .download-latest .meta {
-            color: var(--text-muted);
-            font-size: 0.85rem;
-        }
-        footer {
-            text-align: center;
-            padding: 2rem;
-            color: var(--text-muted);
-            font-size: 0.85rem;
-            border-top: 1px solid var(--border);
-        }
+        .btn-outline { background: transparent; border: 1.5px solid var(--border); color: var(--text); }
+        .btn-outline:hover { background: var(--surface-alt); border-color: var(--accent); color: var(--accent); }
+        .download-latest { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem 1.75rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
+        .download-latest .version { font-size: 1.25rem; font-weight: 700; }
+        .download-latest .meta { color: var(--text-muted); font-size: 0.85rem; }
+        footer { text-align: center; padding: 2rem; color: var(--text-muted); font-size: 0.85rem; border-top: 1px solid var(--border); }
         footer a { color: var(--accent); text-decoration: none; }
-        @media (max-width: 640px) {
-            .hero h1 { font-size: 2rem; }
-            .grid { grid-template-columns: 1fr; }
-        }
+        .back-link { display: inline-block; margin-bottom: 1rem; color: var(--text-muted); text-decoration: none; font-size: 0.9rem; }
+        .back-link:hover { color: var(--accent); }
+        @media (max-width: 640px) { .hero h1 { font-size: 2rem; } .grid { grid-template-columns: 1fr; } .hero-preview { margin: 1.5rem 1rem 0; } }
     </style>
 </head>
 <body>
@@ -194,10 +55,14 @@
             <span class="badge">&#x1F6E0;&#xFE0F; Latest: v0.9.14</span>
             <span class="badge">&#x1F4DC; MIT License</span>
         </div>
+        <div class="hero-preview">
+            <img src="https://raw.githubusercontent.com/ambaner/mnos16/main/doc/booted.gif" alt="MNOS16 booting in Hyper-V">
+        </div>
     </div>
 
     <div class="container">
-        <a style="display:inline-block;margin-bottom:1rem;color:#64748b;text-decoration:none;font-size:0.9rem;" href="https://ambaner.github.io/">&#x2190; Back to all projects</a><h2 class="section-title">Project Resources</h2>
+        <a class="back-link" href="https://ambaner.github.io/">&#x2190; Back to all projects</a>
+        <h2 class="section-title">Project Resources</h2>
         <p class="section-subtitle">Everything you need to understand, build, and run MNOS16.</p>
 
         <div class="grid">
@@ -215,6 +80,7 @@
                     <li><a href="https://github.com/ambaner/mnos16/blob/main/doc/SYSTEM-CALLS.md">System Calls</a></li>
                     <li><a href="https://github.com/ambaner/mnos16/blob/main/doc/PROGRAM-LOADER.md">Program Loader</a></li>
                     <li><a href="https://github.com/ambaner/mnos16/blob/main/doc/MNEX-BINARY-FORMAT.md">MNEX Binary Format</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/blob/main/doc/ABI.md">Application Binary Interface (ABI)</a></li>
                     <li><a href="https://github.com/ambaner/mnos16/blob/main/doc/MNMON.md">MNMON (Monitor)</a></li>
                     <li><a href="https://github.com/ambaner/mnos16/blob/main/doc/EDITOR.md">Editor</a></li>
                     <li><a href="https://github.com/ambaner/mnos16/blob/main/doc/COMMAND-LINE.md">Command Line</a></li>
@@ -236,11 +102,37 @@
                 <br>
                 <h4 style="font-size:0.9rem; color: var(--text-muted); margin-bottom:0.5rem;">Previous Releases</h4>
                 <ul>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.9.13">v0.9.13</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.9.12">v0.9.12</a></li>
                     <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.9.11">v0.9.11</a></li>
                     <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.9.10">v0.9.10</a></li>
                     <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.9.9">v0.9.9</a></li>
                     <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.9.8">v0.9.8</a></li>
                     <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.9.7">v0.9.7</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.9.6">v0.9.6</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.9.5">v0.9.5</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.9.2">v0.9.2</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.9.1">v0.9.1</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.9.0">v0.9.0</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.8.1">v0.8.1</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.8.0">v0.8.0</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.7.6">v0.7.6</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.7.5">v0.7.5</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.7.4">v0.7.4</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.7.2">v0.7.2</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.7.1">v0.7.1</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.7.0">v0.7.0</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.6.0">v0.6.0</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.5.0">v0.5.0</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.4.0">v0.4.0</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.3.0">v0.3.0</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.2.7">v0.2.7</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.2.6">v0.2.6</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.2.5">v0.2.5</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.2.2">v0.2.2</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.2.1">v0.2.1</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.2.0">v0.2.0</a></li>
+                    <li><a href="https://github.com/ambaner/mnos16/releases/tag/v0.1.0">v0.1.0</a></li>
                 </ul>
                 <br>
                 <a class="btn btn-outline" href="https://github.com/ambaner/mnos16/releases">View All Releases</a>
