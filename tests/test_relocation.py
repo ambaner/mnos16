@@ -23,11 +23,24 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 TOOLS_DIR = REPO_ROOT / "tools"
 GEN_RELOCS = TOOLS_DIR / "gen_relocs.py"
 PACK_MODULE = TOOLS_DIR / "pack_module.py"
-NASM_DIR = TOOLS_DIR / "nasm"
-NASM_EXE = NASM_DIR / "nasm.exe"
 BUILD_DIR = REPO_ROOT / "build" / "boot"
 
 PYTHON = sys.executable
+
+
+def _find_nasm():
+    """Find NASM executable — check tools/nasm/ first, then PATH."""
+    local_nasm = TOOLS_DIR / "nasm" / "nasm.exe"
+    if local_nasm.exists():
+        return local_nasm
+    import shutil
+    sys_nasm = shutil.which("nasm")
+    if sys_nasm:
+        return Path(sys_nasm)
+    pytest.skip("NASM not found (neither tools/nasm/nasm.exe nor on PATH)")
+
+
+NASM_EXE = _find_nasm()
 
 
 # =============================================================================
