@@ -1,0 +1,21 @@
+# Build output
+build/
+
+# Downloaded tools
+tools/nasm/
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Copilot session context
+.copilot-context.md
+
+# Test artifacts (assembled stubs, coverage reports, generated constants)
+tests/bin/
+tests/harness/constants.py
+coverage/
+.pytest_cache/
+__pycache__/

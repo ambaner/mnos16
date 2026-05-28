@@ -1,0 +1,154 @@
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup NASM
+      uses: ilammy/setup-nasm@v1
+
+    - name: Build MNOS16
+      run: .\build.bat
+      shell: cmd
+
+    - name: Package release
+      shell: pwsh
+      run: |
+        $tag = "${{ github.ref_name }}"
+        $stagingDir = "MNOS16-$tag"
+
+        # Create release directory structure
+        New-Item -ItemType Directory -Force -Path `
+            "$stagingDir\distro\mbr", `
+            "$stagingDir\vhd", `
+            "$stagingDir\setup-vm", `
+            "$stagingDir\tools" | Out-Null
+
+        # Copy artifacts
+        Copy-Item "build\boot\mbr.bin"       "$stagingDir\distro\mbr\"
+        Copy-Item "build\boot\vbr.bin"       "$stagingDir\distro\mbr\"
+        Copy-Item "build\boot\loader.sys"    "$stagingDir\distro\mbr\"
+        Copy-Item "build\boot\kernel.sys"    "$stagingDir\distro\mbr\"
+        Copy-Item "build\boot\shell.sys"     "$stagingDir\distro\mbr\"
+        Copy-Item "build\boot\fs.sys"        "$stagingDir\distro\mbr\"
+        Copy-Item "build\boot\mm.sys"        "$stagingDir\distro\mbr\"
+        Copy-Item "build\boot\edit.mnx"      "$stagingDir\distro\mbr\"
+        Copy-Item "build\boot\mnmon.mnx"     "$stagingDir\distro\mbr\"
+        Copy-Item "build\boot\sysinfo.mnx"   "$stagingDir\distro\mbr\"
+        Copy-Item "build\boot\MNOS16.vhd"    "$stagingDir\vhd\"
+        Copy-Item "tools\setup-vm.ps1"        "$stagingDir\setup-vm\"
+        Copy-Item "tools\create-vhd.ps1"      "$stagingDir\tools\"
+        Copy-Item "tools\create-vhd.bat"      "$stagingDir\tools\"
+
+        # Create setup-vm.bat for release (adjusted paths — self-contained)
+        @"
+        @echo off
+        cd /d "%~dp0"
+        where pwsh >nul 2>&1
+        if errorlevel 1 (
+            echo ERROR: PowerShell 7 is not installed. Install from: https://aka.ms/powershell
+            exit /b 1
+        )
+        pwsh -NoProfile -ExecutionPolicy Bypass -File "setup-vm.ps1"
+        "@ | Set-Content "$stagingDir\setup-vm\setup-vm.bat"
+
+        # Create README.txt
+        @"
+        MNOS16 $tag
+        ============
+
+        A minimalistic 16-bit bootable OS. MBR reads the partition table, loads the
+        VBR from the active partition. Boot chain: VBR loads LOADER.SYS
+        (A20 enablement), which loads KERNEL.SYS (INT 0x80 syscall interface),
+        which loads FS.SYS (filesystem), MM.SYS (memory manager), and
+        SHELL.SYS (interactive shell).
+        Commands: mem, ver, help, cls, dir, copy, del, ren, reboot.
+        User programs: sysinfo, edit (text editor), mnmon (machine monitor).
+
+        CONTENTS
+        --------
+        distro\mbr\mbr.bin      Raw 512-byte MBR boot sector
+        distro\mbr\vbr.bin      Raw VBR binary (2 sectors / 1 KB)
+        distro\mbr\loader.sys   LOADER.SYS (3 sectors)
+        distro\mbr\fs.sys       FS.SYS (5 sectors)
+        distro\mbr\kernel.sys   KERNEL.SYS (8 sectors)
+        distro\mbr\shell.sys    SHELL.SYS (13 sectors)
+        distro\mbr\mm.sys       MM.SYS (2 sectors)
+        distro\mbr\edit.mnx     EDIT.MNX — full-screen text editor
+        distro\mbr\mnmon.mnx    MNMON.MNX — interactive machine monitor
+        distro\mbr\sysinfo.mnx  SYSINFO.MNX — system information (5 pages)
+        vhd\MNOS16.vhd        16 MB fixed VHD — ready to boot in Hyper-V
+        setup-vm\             Scripts to create/update a Hyper-V VM
+        tools\                VHD creation tools (if you rebuild from source)
+
+        QUICK START
+        -----------
+        1. Open an elevated PowerShell 7 prompt:
+             Right-click Start -> Terminal (Admin)
+
+        2. Navigate to the setup-vm folder and run:
+             cd setup-vm
+             .\setup-vm.bat
+
+        3. Follow the prompts (defaults are fine).
+
+        4. Start the VM:
+             Start-VM -Name 'MNOS16'
+             vmconnect localhost 'MNOS16'
+
+        5. You should see "In MBR", partition info, then the shell prompt:
+             mnos:\>
+           Type "help" for commands, or "sysinfo" for system information.
+
+        PREREQUISITES
+        -------------
+        - Windows 10/11 with Hyper-V enabled
+        - PowerShell 7+  (https://aka.ms/powershell)
+
+        SOURCE CODE
+        -----------
+        https://github.com/ambaner/mini-os
+
+        LICENSE
+        -------
+        MIT — see LICENSE in the source repository.
+        "@ | Set-Content "$stagingDir\README.txt"
+
+        # Create zip
+        Compress-Archive -Path "$stagingDir\*" -DestinationPath "$stagingDir.zip" -Force
+
+        Write-Host "Release package: $stagingDir.zip"
+        Get-ChildItem "$stagingDir" -Recurse -Name | ForEach-Object { Write-Host "  $_" }
+
+    - name: Upload release artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-package
+        path: MNOS16-*.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+    - name: Download release artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: release-package
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: MNOS16-*.zip
+        generate_release_notes: true

@@ -1,0 +1,271 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: pages-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup NASM
+      uses: ilammy/setup-nasm@v1
+
+    - name: Build MNOS16
+      run: .\build.bat
+      shell: cmd
+
+    - name: Verify build outputs
+      shell: pwsh
+      run: |
+        $mbr = "build\boot\mbr.bin"
+        $vbr = "build\boot\vbr.bin"
+        $ldr = "build\boot\loader.sys"
+        $fsm = "build\boot\fs.sys"
+        $krn = "build\boot\kernel.sys"
+        $shl = "build\boot\shell.sys"
+        $mm  = "build\boot\mm.sys"
+        $mon = "build\boot\mnmon.mnx"
+        $edt = "build\boot\edit.mnx"
+        $sys = "build\boot\sysinfo.mnx"
+        $img = "build\boot\MNOS16.img"
+        $vhd = "build\boot\MNOS16.vhd"
+
+        # Check all files exist
+        foreach ($f in @($mbr, $vbr, $ldr, $fsm, $krn, $shl, $mm, $mon, $edt, $sys, $img, $vhd)) {
+            if (-not (Test-Path $f)) { throw "$f not found" }
+        }
+
+        # MBR: 512 bytes + boot signature
+        $mbrBytes = [System.IO.File]::ReadAllBytes($mbr)
+        if ($mbrBytes.Length -ne 512) { throw "mbr.bin is $($mbrBytes.Length) bytes (expected 512)" }
+        if ($mbrBytes[510] -ne 0x55 -or $mbrBytes[511] -ne 0xAA) {
+            throw "MBR boot signature missing"
+        }
+
+        # VBR: multiple of 512 bytes + boot signature + MNOS header
+        $vbrBytes = [System.IO.File]::ReadAllBytes($vbr)
+        if (($vbrBytes.Length % 512) -ne 0) { throw "vbr.bin is $($vbrBytes.Length) bytes (not a multiple of 512)" }
+        if ($vbrBytes.Length -lt 512) { throw "vbr.bin is $($vbrBytes.Length) bytes (expected >= 512)" }
+        if ($vbrBytes[510] -ne 0x55 -or $vbrBytes[511] -ne 0xAA) {
+            throw "VBR boot signature missing"
+        }
+        $magic = [System.Text.Encoding]::ASCII.GetString($vbrBytes, 3, 4)
+        if ($magic -ne 'MNOS') {
+            throw "VBR magic is '$magic' (expected 'MNOS')"
+        }
+        $bootSectors = [BitConverter]::ToUInt16($vbrBytes, 7)
+        if ($bootSectors -lt 1 -or $bootSectors -gt 128) {
+            throw "VBR boot sectors = $bootSectors (expected 1-128)"
+        }
+        $vbrSectors = $vbrBytes.Length / 512
+        if ($vbrSectors -ne $bootSectors) {
+            throw "VBR binary is $vbrSectors sectors but header declares $bootSectors"
+        }
+
+        # LOADER: multiple of 512 bytes + MNLD magic
+        $ldrBytes = [System.IO.File]::ReadAllBytes($ldr)
+        if (($ldrBytes.Length % 512) -ne 0) { throw "loader.sys is $($ldrBytes.Length) bytes (not a multiple of 512)" }
+        $ldrMagic = [System.Text.Encoding]::ASCII.GetString($ldrBytes, 0, 4)
+        if ($ldrMagic -ne 'MNLD') { throw "LOADER magic is '$ldrMagic' (expected 'MNLD')" }
+        $ldrSectors = [BitConverter]::ToUInt16($ldrBytes, 4)
+        if ($ldrSectors -ne ($ldrBytes.Length / 512)) {
+            throw "LOADER binary is $($ldrBytes.Length / 512) sectors but header declares $ldrSectors"
+        }
+
+        # KERNEL: multiple of 512 bytes + MNKN magic
+        $krnBytes = [System.IO.File]::ReadAllBytes($krn)
+        if (($krnBytes.Length % 512) -ne 0) { throw "kernel.sys is $($krnBytes.Length) bytes (not a multiple of 512)" }
+        $krnMagic = [System.Text.Encoding]::ASCII.GetString($krnBytes, 0, 4)
+        if ($krnMagic -ne 'MNKN') { throw "KERNEL magic is '$krnMagic' (expected 'MNKN')" }
+        $krnSectors = [BitConverter]::ToUInt16($krnBytes, 4)
+        if ($krnSectors -ne ($krnBytes.Length / 512)) {
+            throw "KERNEL binary is $($krnBytes.Length / 512) sectors but header declares $krnSectors"
+        }
+
+        # FS: multiple of 512 bytes + MNFS magic
+        $fsmBytes = [System.IO.File]::ReadAllBytes($fsm)
+        if (($fsmBytes.Length % 512) -ne 0) { throw "fs.sys is $($fsmBytes.Length) bytes (not a multiple of 512)" }
+        $fsmMagic = [System.Text.Encoding]::ASCII.GetString($fsmBytes, 0, 4)
+        if ($fsmMagic -ne 'MNFS') { throw "FS magic is '$fsmMagic' (expected 'MNFS')" }
+        $fsmSectors = [BitConverter]::ToUInt16($fsmBytes, 4)
+        if ($fsmSectors -ne ($fsmBytes.Length / 512)) {
+            throw "FS binary is $($fsmBytes.Length / 512) sectors but header declares $fsmSectors"
+        }
+
+        # SHELL: multiple of 512 bytes + MNEX magic
+        $shlBytes = [System.IO.File]::ReadAllBytes($shl)
+        if (($shlBytes.Length % 512) -ne 0) { throw "shell.sys is $($shlBytes.Length) bytes (not a multiple of 512)" }
+        $shlMagic = [System.Text.Encoding]::ASCII.GetString($shlBytes, 0, 4)
+        if ($shlMagic -ne 'MNEX') { throw "SHELL magic is '$shlMagic' (expected 'MNEX')" }
+        $shlSectors = [BitConverter]::ToUInt16($shlBytes, 4)
+        if ($shlSectors -ne ($shlBytes.Length / 512)) {
+            throw "SHELL binary is $($shlBytes.Length / 512) sectors but header declares $shlSectors"
+        }
+
+        # MM: multiple of 512 bytes + MNMM magic
+        $mmBytes = [System.IO.File]::ReadAllBytes($mm)
+        if (($mmBytes.Length % 512) -ne 0) { throw "mm.sys is $($mmBytes.Length) bytes (not a multiple of 512)" }
+        $mmMagic = [System.Text.Encoding]::ASCII.GetString($mmBytes, 0, 4)
+        if ($mmMagic -ne 'MNMM') { throw "MM magic is '$mmMagic' (expected 'MNMM')" }
+        $mmSectors = [BitConverter]::ToUInt16($mmBytes, 4)
+        if ($mmSectors -ne ($mmBytes.Length / 512)) {
+            throw "MM binary is $($mmBytes.Length / 512) sectors but header declares $mmSectors"
+        }
+
+        # EDIT.MNX: multiple of 512 bytes + MNEX magic
+        $edtBytes = [System.IO.File]::ReadAllBytes($edt)
+        if (($edtBytes.Length % 512) -ne 0) { throw "edit.mnx is $($edtBytes.Length) bytes (not a multiple of 512)" }
+        $edtMagic = [System.Text.Encoding]::ASCII.GetString($edtBytes, 0, 4)
+        if ($edtMagic -ne 'MNEX') { throw "EDIT magic is '$edtMagic' (expected 'MNEX')" }
+        $edtSectors = [BitConverter]::ToUInt16($edtBytes, 4)
+        if ($edtSectors -ne ($edtBytes.Length / 512)) {
+            throw "EDIT binary is $($edtBytes.Length / 512) sectors but header declares $edtSectors"
+        }
+
+        # MNMON.MNX: multiple of 512 bytes + MNEX magic
+        $monBytes = [System.IO.File]::ReadAllBytes($mon)
+        if (($monBytes.Length % 512) -ne 0) { throw "mnmon.mnx is $($monBytes.Length) bytes (not a multiple of 512)" }
+        $monMagic = [System.Text.Encoding]::ASCII.GetString($monBytes, 0, 4)
+        if ($monMagic -ne 'MNEX') { throw "MNMON magic is '$monMagic' (expected 'MNEX')" }
+        $monSectors = [BitConverter]::ToUInt16($monBytes, 4)
+        if ($monSectors -ne ($monBytes.Length / 512)) {
+            throw "MNMON binary is $($monBytes.Length / 512) sectors but header declares $monSectors"
+        }
+
+        # SYSINFO.MNX: multiple of 512 bytes + MNEX magic
+        $sysBytes = [System.IO.File]::ReadAllBytes($sys)
+        if (($sysBytes.Length % 512) -ne 0) { throw "sysinfo.mnx is $($sysBytes.Length) bytes (not a multiple of 512)" }
+        $sysMagic = [System.Text.Encoding]::ASCII.GetString($sysBytes, 0, 4)
+        if ($sysMagic -ne 'MNEX') { throw "SYSINFO magic is '$sysMagic' (expected 'MNEX')" }
+        $sysSectors = [BitConverter]::ToUInt16($sysBytes, 4)
+        if ($sysSectors -ne ($sysBytes.Length / 512)) {
+            throw "SYSINFO binary is $($sysBytes.Length / 512) sectors but header declares $sysSectors"
+        }
+
+        # Disk image: partition table present
+        $imgBytes = [System.IO.File]::ReadAllBytes($img)
+        if ($imgBytes[0x1BE] -ne 0x80) { throw "Partition 1 not marked active in disk image" }
+        if ($imgBytes[0x1C2] -eq 0x00) { throw "Partition 1 type is 0x00 (empty) in disk image" }
+
+        # VHD footer
+        $vhdBytes = [System.IO.File]::ReadAllBytes($vhd)
+        $footerStart = $vhdBytes.Length - 512
+        $cookie = [System.Text.Encoding]::ASCII.GetString($vhdBytes, $footerStart, 8)
+        if ($cookie -ne 'conectix') {
+            throw "VHD footer cookie is '$cookie' (expected 'conectix')"
+        }
+
+        Write-Host "Build verification passed:"
+        Write-Host "  mbr.bin      : $($mbrBytes.Length) bytes, signature OK"
+        Write-Host "  vbr.bin      : $($vbrBytes.Length) bytes ($vbrSectors sectors), signature OK, magic MNOS"
+        Write-Host "  loader.sys   : $($ldrBytes.Length) bytes ($ldrSectors sectors), magic MNLD"
+        Write-Host "  fs.sys       : $($fsmBytes.Length) bytes ($fsmSectors sectors), magic MNFS"
+        Write-Host "  kernel.sys   : $($krnBytes.Length) bytes ($krnSectors sectors), magic MNKN"
+        Write-Host "  shell.sys    : $($shlBytes.Length) bytes ($shlSectors sectors), magic MNEX"
+        Write-Host "  mm.sys       : $($mmBytes.Length) bytes ($mmSectors sectors), magic MNMM"
+        Write-Host "  edit.mnx     : $($edtBytes.Length) bytes ($edtSectors sectors), magic MNEX"
+        Write-Host "  mnmon.mnx    : $($monBytes.Length) bytes ($monSectors sectors), magic MNEX"
+        Write-Host "  sysinfo.mnx  : $($sysBytes.Length) bytes ($sysSectors sectors), magic MNEX"
+        Write-Host "  MNOS16.img   : $($imgBytes.Length) bytes, partition table OK"
+        Write-Host "  MNOS16.vhd   : $($vhdBytes.Length) bytes, VHD footer OK"
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: MNOS16-build
+        path: |
+          build/boot/mbr.bin
+          build/boot/vbr.bin
+          build/boot/loader.sys
+          build/boot/fs.sys
+          build/boot/kernel.sys
+          build/boot/shell.sys
+          build/boot/mm.sys
+          build/boot/edit.mnx
+          build/boot/mnmon.mnx
+          build/boot/sysinfo.mnx
+          build/boot/MNOS16.vhd
+        retention-days: 30
+
+  test:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Setup NASM
+      uses: ilammy/setup-nasm@v1
+
+    - name: Install test dependencies
+      run: pip install -r tests/requirements.txt
+
+    - name: Generate test constants from .inc files
+      run: python tests/gen_constants.py
+
+    - name: Fetch coverage history
+      if: github.ref == 'refs/heads/main'
+      continue-on-error: true
+      run: |
+        mkdir -p coverage
+        curl -sSf "https://raw.githubusercontent.com/${{ github.repository }}/gh-pages/coverage/history.json" \
+          -o coverage/history.json 2>/dev/null || echo "[]" > coverage/history.json
+
+    - name: Run unit tests
+      run: python -m pytest tests/ -v --tb=short --junitxml=test-results.xml
+
+    - name: Write job summary
+      if: always()
+      run: |
+        if [ -f coverage/summary.json ]; then
+          echo '## Unit Test Coverage' >> $GITHUB_STEP_SUMMARY
+          python -c "
+        import json
+        with open('coverage/summary.json') as f:
+            data = json.load(f)
+        print(f'**Statement: {data[\"overall_coverage\"]:.0f}%** ({data[\"hit_addresses\"]}/{data[\"total_addresses\"]} addresses)')
+        print(f'| **Branch: {data.get(\"branch_coverage\", 0):.0f}%** ({data.get(\"branch_outcomes_covered\", 0)}/{data.get(\"branch_outcomes_total\", 0)} outcomes)')
+        print()
+        print('| Routine | Statement | Branch |')
+        print('|---------|-----------|--------|')
+        for name, r in sorted(data.get('routines', {}).items()):
+            br = r.get('branch_coverage')
+            br_str = f'{br:.0f}%' if br is not None else '—'
+            print(f'| \`{name}\` | {r[\"coverage\"]:.0f}% | {br_str} |')
+        " >> $GITHUB_STEP_SUMMARY
+        fi
+
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: |
+          test-results.xml
+          coverage/
+        retention-days: 30
+
+    - name: Deploy coverage to GitHub Pages
+      if: github.ref == 'refs/heads/main' && success()
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./coverage
+        destination_dir: coverage
