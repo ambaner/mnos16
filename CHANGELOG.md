@@ -35,6 +35,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (44 bytes), `spawn_depth`, and `spawn_pending` flag.
 - `doc/SYSTEM-CALLS.md` — updated SYS_SPAWN semantics for nesting and rollback.
 - `doc/PROGRAM-LOADER.md` §6.4 — rewritten to describe stack-based spawn model.
+- `doc/ABI.md` — bumped to v2.0: fixed stale syscall numbers (SYS_EXIT=0x23,
+  SYS_GET_ARGC=0x25, SYS_GET_ARGV=0x26, SYS_GET_VERSION=0x05), added
+  SYS_SPAWN section, documented trampoline/ret behavior.
 - Version bumped to 0.9.16.
 
 ---

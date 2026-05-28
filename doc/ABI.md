@@ -1,7 +1,7 @@
 # MNOS16 Application Binary Interface (ABI) Contract
 
-**Version**: 1.0  
-**Effective from**: MNOS16 v0.9.14  
+**Version**: 2.0  
+**Effective from**: MNOS16 v0.9.15  
 **Status**: Stable — programs compiled against this ABI will run on all future versions.
 
 ## Purpose
@@ -103,12 +103,22 @@ This allows forward-compatible programs to probe for new features:
 
 ### 6. Program Exit
 
-Programs return to the shell via:
+Programs return to the shell via either mechanism:
+
+**Explicit exit:**
 ```nasm
-    mov ah, SYS_EXIT    ; AH = 0x0A
+    mov ah, SYS_EXIT    ; AH = 0x23
     int 0x80
 ```
-This restores the shell's stack and resumes the command prompt.
+
+**Implicit exit (ret):**
+```nasm
+    ret                 ; Near return — pops shell's saved return address
+```
+
+Both restore the shell's stack and resume the command prompt.  If the program
+was launched via `SYS_SPAWN`, `ret` hits a kernel trampoline that converts it
+into `SYS_EXIT` so the spawn chain unwinds correctly.
 
 ### 7. Command-Line Arguments
 
@@ -120,10 +130,12 @@ This restores the shell's stack and resumes the command prompt.
 | `0x7F22`–`0x7FFB` | NUL-separated argument strings |
 
 Access via syscall:
-- `SYS_GET_ARGC` (AH=0x0B) → AL = argument count
-- `SYS_GET_ARGV` (AH=0x0C, AL=index) → SI = pointer to string
+- `SYS_GET_ARGC` (AH=0x25) → CL = argument count
+- `SYS_GET_ARGV` (AH=0x26, CL=index) → SI = pointer to string, CX = length
 
-## Program-to-Program Execution (SYS_EXEC)
+## Program-to-Program Execution
+
+### SYS_EXEC (AH=0x27) — Overlay Exec
 
 A running program can replace itself with another program via `SYS_EXEC`
 (INT 0x80, AH=0x27).  This is an overlay-style exec — the calling program
@@ -141,13 +153,41 @@ is destroyed and the new program takes over the TPA.
 
 **Error codes:** 1=file not found, 2=not executable/system file, 3=too large, 4=read error, 5=bad MNEX header
 
-**Design notes:**
-- Implementation lives in the kernel (INT 0x80 handler) since the calling
-  program occupies the TPA and would be overwritten during load
-- The kernel copies the filename and args to internal scratch space before
-  overlaying the TPA
-- New program inherits the shell's saved SP (same return mechanism as direct
-  shell launch)
+### SYS_SPAWN (AH=0x28) — Spawn with Parent Reload
+
+A program can launch a child and be automatically reloaded when the child
+exits.  This is the mechanism behind MNMON's `x` command.
+
+**Interface:**
+- DS:SI = child's 11-byte filename (8.3 padded uppercase)
+- DS:DI = child's argument string (0 = no args)
+- DS:BX = caller's own 11-byte filename (for reload after child exits)
+
+**Behavior:**
+- On success: does not return — child program runs in TPA.  When the child
+  exits (`ret` or `SYS_EXIT`), the kernel reloads the parent from disk and
+  restarts it fresh (no state preserved).
+- On failure: returns to caller with CF=1, AX = error code (same as
+  `SYS_EXEC`; additionally AX=4 means nesting too deep)
+- The caller's TPA is NOT modified on failure (rollback is automatic)
+
+**Nesting:** Up to 4 levels supported (e.g., mnmon→mnmon→mnmon→edit).
+Exceeding the limit returns CF=1, AX=4.
+
+**Semantics:**
+1. The kernel pushes the caller's filename onto an internal parent stack and
+   increments `spawn_depth`.
+2. On the **outermost** spawn (depth was 0), the kernel saves the shell
+   return address and installs a trampoline at `[SP]` so the child's `ret`
+   triggers `SYS_EXIT`.  Nested spawns reuse the existing trampoline.
+3. The child is loaded identically to `SYS_EXEC`.
+4. When the child exits, `SYS_EXIT` decrements `spawn_depth`, reloads the
+   parent at that index, and either restores the shell return (if outermost)
+   or re-installs the trampoline (if still nested).
+
+**Rollback on failure:** If the child file cannot be loaded (pre-load
+validation error such as file-not-found), the kernel automatically undoes
+the depth increment and trampoline so the caller can continue normally.
 
 ## Constraints (programs MUST obey)
 
@@ -176,9 +216,9 @@ is destroyed and the new program takes over the TPA.
 
 Programs can query the OS version at runtime:
 ```nasm
-    mov ah, SYS_GET_VERSION    ; AH = 0x09
+    mov ah, SYS_GET_VERSION    ; AH = 0x05
     int 0x80
-    ; AL = major version, AH = minor version
+    ; AH = major version, AL = minor version
 ```
 
 ## Compatibility Matrix

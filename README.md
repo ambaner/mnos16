@@ -10,6 +10,7 @@ and Debug configurations.
 ![MNOS16 booting in Hyper-V](doc/booted.gif)
 
 [![Build](../../actions/workflows/build.yml/badge.svg)](../../actions/workflows/build.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## Prerequisites
 
