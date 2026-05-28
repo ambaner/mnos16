@@ -1,6 +1,6 @@
 # Program Loader Design Document
 
-## Version: v0.9.14 (Implemented)
+## Version: v0.9.15 (Implemented)
 
 ## 1. Overview
 
@@ -636,7 +636,7 @@ Even though programs are now relocatable, USER_PROG_BASE remains at 0x8000:
 
 ## 12. Testing Strategy
 
-1. **HELLO.MNX** — basic load + print + return
+1. **MNMON.MNX** — basic load + interactive commands + quit
 2. **Run nonexistent file** — "Bad command or file name" error
 3. **Run KERNEL.SYS** — "System module, cannot run in user mode"
 4. **Run file > 30 KB** — "Program too large" error

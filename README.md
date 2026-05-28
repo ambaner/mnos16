@@ -1,7 +1,7 @@
 # MNOS16
 
 A minimalistic 16-bit operating system built from scratch in x86 assembly —
-currently at **v0.9.14**.  Features a multi-stage boot loader, a
+currently at **v0.9.15**.  Features a multi-stage boot loader, a
 microkernel-style architecture with separate relocatable modules for filesystem
 and memory management, and an interactive shell that can load and run user
 programs.  Targets Hyper-V Gen 1 VMs with a unified VHD containing both Release
@@ -91,7 +91,7 @@ VHD — no need to rebuild or swap images.
 After the boot chain completes, you'll see the shell:
 
 ```
-  MNOS v0.9.14 [Release]
+  MNOS v0.9.15 [Release]
 
 mnos:\>
 ```
@@ -143,6 +143,7 @@ mini-os/
 │   ├── MNEX-BINARY-FORMAT.md # Custom binary format spec, toolchain, build pipeline
 │   ├── MNMON.md              # Machine monitor design & command reference
 │   ├── PROGRAM-LOADER.md     # Program loader design — implicit execution, TPA, .MNX format
+│   ├── SYSINFO.md            # SYSINFO.MNX — system information utility (5 pages)
 │   ├── SYSTEM-CALLS.md       # User↔kernel boundary, IVT/IDT/SYSCALL mechanisms
 │   └── TESTING.md            # Unit test framework design (3-tier strategy)
 ├── src/
@@ -193,7 +194,7 @@ mini-os/
 │   │   │   ├── sysinfo.asm    #   Entry point, MNEX header (6 sectors)
 │   │   │   ├── sysinfo_code.inc   # Display logic (CPU, memory, BDA, disk, IVT)
 │   │   │   └── sysinfo_data.inc   # Strings & runtime buffers
-│   │   ├── hello.asm          # HELLO.MNX — first user-mode demo program
+│   │   ├── hello.asm          # HELLO.MNX — minimal demo program (not shipped)
 │   │   └── mnmon.asm          # MNMON.MNX — interactive machine monitor (WinDbg-style)
 │   └── shell/
 │       ├── shell.asm          # Shell entry point — init, command loop, dispatch (relocatable)
@@ -242,23 +243,34 @@ mini-os/
 │   ├── requirements.txt       # Python deps (unicorn, pytest, pytest-html)
 │   ├── harness/
 │   │   ├── assembler.py       # NASM stub assembly helper
+│   │   ├── branch_coverage.py # Branch-level coverage tracking
 │   │   ├── constants.py       # Auto-generated from memory.inc + syscalls.inc + mnfs.inc
 │   │   ├── coverage.py        # Coverage collector & HTML/JSON reporter
 │   │   └── emulator.py        # MiniOSEmulator (Unicorn wrapper)
 │   ├── stubs/                 # Minimal NASM harnesses for routines under test
 │   │   ├── stub_cmdmatch.asm
+│   │   ├── stub_edit_find.asm
+│   │   ├── stub_edit_fname.asm
+│   │   ├── stub_edit_gap.asm
+│   │   ├── stub_exec_parse_args.asm
 │   │   ├── stub_fs_write.asm
 │   │   ├── stub_mm.asm
 │   │   ├── stub_parse_args.asm
 │   │   ├── stub_parse_fname.asm
+│   │   ├── stub_spawn_state.asm
 │   │   └── stub_strcmp.asm
 │   ├── test_cmdmatch.py       # 12 tests for cmdmatch (command prefix matching)
+│   ├── test_edit_find.py      # Tests for editor search/find and atoi
+│   ├── test_edit_fname.py     # Tests for editor 8.3 filename parser
+│   ├── test_edit_gap.py       # Tests for editor gap buffer operations
+│   ├── test_exec.py           # Tests for SYS_EXEC (overlay execution, arg parsing)
 │   ├── test_fs_write.py       # 26 tests for FS write/delete/rename
 │   ├── test_memory_layout.py  # 16 tests for memory layout consistency
 │   ├── test_mm.py             # 29 tests for memory manager
 │   ├── test_parse_args.py     # 15 tests for shell_parse_args
 │   ├── test_parse_filename.py # 9 tests for run_parse_filename
 │   ├── test_relocation.py     # 39 tests for relocation toolchain and patching
+│   ├── test_spawn_state.py    # Tests for SYS_SPAWN state machine (push/rollback/depth)
 │   └── test_strcmp.py          # 11 tests for strcmp
 ├── CHANGELOG.md
 ├── CODE_OF_CONDUCT.md
@@ -341,6 +353,9 @@ Additional deep-dive documents:
 - **[doc/MNMON.md](doc/MNMON.md)** — Machine monitor design: WinDbg-style commands
   (db/dw/eb/ew/g), Wozmon heritage, implementation as standalone .MNX program.
 
+- **[doc/SYSINFO.md](doc/SYSINFO.md)** — System information utility: 5 pages of
+  hardware details (CPU, memory, BDA, video/disk, IVT), CPUID detection, EDD queries.
+
 - **[doc/EDITOR.md](doc/EDITOR.md)** — Text editor design: gap buffer internals,
   modular .inc architecture, modal dialog system, Find/Replace engine, memory
   layout, color scheme, key dispatch, and file I/O integration.
@@ -387,6 +402,7 @@ Each version is a tagged release you can checkout to see the project at that sta
 | `v0.9.12` | **Text Editor + MNOS16 Rename** | Full-screen editor (EDIT.MNX); gap buffer; modal dialogs; Find/Replace All (F4); menu hotkeys; project renamed to MNOS16; implicit execution (no built-in `edit` command) |
 | `v0.9.13` | **Sysinfo Extraction + Layout Tightening** | `sysinfo` extracted from shell into standalone SYSINFO.MNX (6 sectors); shell shrunk 19→13 sectors; kernel relocated 0x5800→0x5000; stack doubled 2→4 KB; 16 memory-layout consistency tests; 176 total tests |
 | `v0.9.14` | **Relocatable Modules + ABI Contract** | All binaries (system modules FS/MM/SHELL AND user programs .MNX) now assembled with ORG 0 and relocated at load time via MNEX v2 headers; gen_relocs.py + pack_module.py toolchain; kernel apply_relocs for modules, shell apply_relocs for programs; dynamic module placement; formal ABI contract (doc/ABI.md); full binary portability; 35 relocation unit tests; 213 total tests |
+| `v0.9.15` | **SYS_EXEC + SYS_SPAWN** | Overlay exec (AH=0x27) replaces running program; SYS_SPAWN (AH=0x28) with nested parent reload (4-level stack); trampoline-based shell return; spawn rollback on failure; MNMON `x` command; 234 total tests |
 
 ```cmd
 git checkout v0.1.0      # see the project at any prior milestone

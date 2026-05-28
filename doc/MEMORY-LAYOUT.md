@@ -1,6 +1,6 @@
 # Memory Layout Design Document
 
-This document provides an exhaustive description of how mini-os uses the x86
+This document provides an exhaustive description of how MNOS16 uses the x86
 real-mode address space — every memory region, its purpose, its lifetime, and
 the constraints that shaped its placement.  It also discusses stack sizing,
 real-mode memory limits, and the roadmap to extended/protected-mode memory.
@@ -21,7 +21,7 @@ of exactly **1 MB** (0x00000–0xFFFFF).  However, not all of this is usable:
 0x00500 ├──────────────────────────────────────────────┤
         │                                              │
         │        Conventional memory (free)            │  ~30 KB usable
-        │        Used by mini-os (see §2)              │
+        │        Used by MNOS16 (see §2)              │
         │                                              │
 0x07C00 ├──────────────────────────────────────────────┤
         │ Boot sector load point                512 B  │  BIOS loads MBR here
@@ -52,9 +52,9 @@ or data in real mode — they are memory-mapped hardware regions.
 
 ---
 
-## 2. mini-os Memory Map (v0.9.14)
+## 2. MNOS16 Memory Map (v0.9.15)
 
-mini-os uses the lower portion of conventional memory (0x0500–0xF7FF).  The
+MNOS16 uses the lower portion of conventional memory (0x0500–0xF7FF).  The
 layout was designed around four constraints:
 
 1. **BIOS expects the boot sector at 0x7C00** — this is non-negotiable.
@@ -195,9 +195,10 @@ The loader loads KERNEL.SYS to linear address 0x5000 (segment 0x0000, offset
 system binary that retains a hardcoded ORG, because the loader that places it
 is too simple to perform relocation.
 
-**Contents** (v0.9.14): INT 0x80 IVT installation, 27+ syscall handlers,
-module loading with dynamic placement and `apply_relocs` subroutine, version
-info, `next_base` tracking for sequential module placement.
+**Contents** (v0.9.15): INT 0x80 IVT installation, 27+ syscall handlers
+(including SYS_EXEC, SYS_SPAWN, SYS_EXIT), module loading with dynamic
+placement and `apply_relocs` subroutine, version info, `next_base` tracking
+for sequential module placement, spawn/exit state management.
 
 **Current size**: 8 sectors (4096 bytes), ending at 0x5FFF.  **Maximum**:
 16 sectors (8192 bytes), ending at 0x6FFF.
@@ -266,7 +267,7 @@ exactly the 3 KB budget.
 
 ### 3.3 Stack Usage Analysis
 
-How deep does the stack actually go?  In mini-os's real-mode code:
+How deep does the stack actually go?  In MNOS16's real-mode code:
 
 | Operation | Stack cost | Context |
 |-----------|-----------|---------|
@@ -345,14 +346,14 @@ Stack     ████████    ████████    ████�
 
 | Region | Address | Size | Notes |
 |--------|---------|------|-------|
-| FS.SYS growth room | 0x0C00–0x27FF | 7 KB | FS.SYS is 1 KB, rest unused |
-| FS–shell gap | 0x2800–0x2FFF | 2 KB | Never used |
-| VBR code | 0x7C00–0x7FFF | 1 KB | Overlaps stack zone |
+| Module area gap | (end of SHELL)–0x4FFF | varies | Unused space above packed modules |
+| VBR code | 0x7C00–0x7FFF | 1 KB | Overlaps stack/ABI zone |
 | VBR staging buffer | 0x7E00–0x9DFF | 8 KB | Fully free |
 
-**Total reclaimable**: ~18 KB (not counting VBR area which overlaps with
-stack).  A future memory manager could return these regions to a free pool.
-Note: 0x0800 is now occupied permanently by FS.SYS (was reclaimable in v0.4.0).
+**Total reclaimable**: ~10–15 KB (varies by build).  A future memory manager
+could return these regions to a free pool.  The module area gap depends on
+the combined size of FS + MM + SHELL (currently ~10.5 KB release, leaving
+~7.5 KB unused between modules and kernel).
 
 ---
 
@@ -568,34 +569,41 @@ prevents a larger loader from colliding with the shell.
 ## 10. Quick Reference Card
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│            mini-os v0.7.0 Memory Quick Reference        │
-├──────────┬──────────┬──────────────────────┬────────────┤
-│ Start    │ End      │ Contents             │ Size       │
-├──────────┼──────────┼──────────────────────┼────────────┤
-│ 0x0000   │ 0x03FF   │ IVT                  │ 1024 B     │
-│ 0x0400   │ 0x04FF   │ BDA                  │ 256 B      │
-│ 0x0500   │ 0x05FF   │ Free (A20 test uses) │ 256 B      │
-│ 0x0600   │ 0x060F   │ Boot Info Block      │ 16 B       │
-│ 0x0610   │ 0x07FF   │ (unused)             │ 496 B      │
-│ 0x0800   │ 0x0BFF   │ FS.SYS (2 sec)       │ 1 KB       │
-│ 0x0C00   │ 0x27FF   │ (FS growth room)     │ 7 KB       │
-│ 0x2800   │ 0x2FFF   │ (gap / buffer zone)  │ 2 KB       │
-│ 0x3000   │ 0x47FF   │ SHELL.SYS (14 sec)   │ 6 KB       │
-│ 0x4800   │ 0x4FFF   │ (shell growth)       │ 2 KB       │
-│ 0x5000   │ 0x5DFF   │ KERNEL.SYS (7 sec)   │ 3.5 KB     │
-│ 0x5E00   │ 0x6FFF   │ (kernel growth)      │ 4.5 KB     │
-│ 0x7000   │ 0x7BFF   │ Stack zone           │ 3 KB       │
-│ 0x7C00   │ 0x7FFF   │ VBR (boot-time)      │ 1 KB       │
-│ 0x7E00   │ 0x9DFF   │ VBR staging (temp)   │ 8 KB       │
-│ 0x9FC00  │ 0x9FFFF  │ EBDA                 │ 1 KB       │
-│ 0xA0000  │ 0xBFFFF  │ Video memory         │ 128 KB     │
-│ 0xC0000  │ 0xFFFFF  │ ROMs + BIOS          │ 256 KB     │
-├──────────┴──────────┴──────────────────────┴────────────┤
-│ Total code loaded: 11,776 B (MBR 512 + VBR 1K + LOADER │
-│         1K + FS 1K + KERNEL 3K + SHELL 6K) — ~2% of    │
-│         640 KB                                          │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│            MNOS16 v0.9.15 Memory Quick Reference             │
+├──────────┬──────────┬─────────────────────────┬──────────────┤
+│ Start    │ End      │ Contents                │ Size         │
+├──────────┼──────────┼─────────────────────────┼──────────────┤
+│ 0x0000   │ 0x03FF   │ IVT                     │ 1024 B       │
+│ 0x0400   │ 0x04FF   │ BDA                     │ 256 B        │
+│ 0x0500   │ 0x05FF   │ Free (A20 test uses)    │ 256 B        │
+│ 0x0600   │ 0x060F   │ Boot Info Block (BIB)   │ 16 B         │
+│ 0x0610   │ 0x07FF   │ (unused gap)            │ 496 B        │
+│ 0x0800   │ ~0x4FFF  │ Dynamic module area     │ ~18 KB max   │
+│          │          │  ├─ FS.SYS   (5 sec)    │  2.5 KB      │
+│          │          │  ├─ MM.SYS   (2 sec)    │  1 KB        │
+│          │          │  └─ SHELL.SYS (14 sec)  │  7 KB        │
+│          │          │  (packed sequentially,   │              │
+│          │          │   positions dynamic)     │              │
+│ 0x4E00   │ 0x4FFF   │ DIR_SCRATCH_BUF (boot)  │ 512 B        │
+│ 0x5000   │ 0x6FFF   │ KERNEL.SYS (8 sec)      │ 4 KB (8 max) │
+│ 0x6C00   │ 0x6C03   │ Stack canary (4 bytes)  │ 4 B          │
+│ 0x6C04   │ 0x7BFF   │ Stack zone (grows ↓)    │ ~4 KB        │
+│ 0x7C00   │ 0x7FFF   │ VBR (boot-time only)    │ 1 KB         │
+│ 0x7E00   │ 0x9DFF   │ VBR staging (temp)      │ 8 KB         │
+│ 0x7F00   │ 0x7FFB   │ ARGV table (post-boot)  │ 252 B        │
+│ 0x7FFC   │ 0x7FFD   │ SHELL_ARGS_PTR          │ 2 B          │
+│ 0x7FFE   │ 0x7FFF   │ SHELL_SAVED_SP          │ 2 B          │
+│ 0x8000   │ 0xF7FF   │ TPA (user programs)     │ 30 KB        │
+│ 0x9FC00  │ 0x9FFFF  │ EBDA                    │ 1 KB         │
+│ 0xA0000  │ 0xBFFFF  │ Video memory            │ 128 KB       │
+│ 0xC0000  │ 0xFFFFF  │ ROMs + BIOS             │ 256 KB       │
+│ FFFF:0010│ FFFF:FF00│ HMA Heap (A20 required) │ ~64 KB       │
+├──────────┴──────────┴─────────────────────────┴──────────────┤
+│ Total code loaded: ~16 KB (MBR 512 + VBR 1K + LOADER 1.5K + │
+│         FS 2.5K + MM 1K + KERNEL 4K + SHELL 7K) — ~2.5% of  │
+│         640 KB conventional memory                           │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -603,23 +611,25 @@ prevents a larger loader from colliding with the shell.
 ## 11. Debug vs. Release Build Sizes
 
 Debug builds (`build.bat /debug`) include serial logging functions, syscall
-tracing, and DBG macros via `%ifdef DEBUG`.  This increases some binaries,
-but **the runtime memory map is identical** — every component loads at its
-hardcoded address.  Debug code simply occupies more bytes within each
-pre-allocated region.
+tracing, and DBG macros via `%ifdef DEBUG`.  This increases some binaries.
+Because modules are now dynamically packed (starting at MODULE_FIRST_BASE),
+larger debug modules simply push subsequent modules higher in memory —
+no fixed addresses are violated.
 
-| Component | Address | Release | Debug | Growth room left |
-|-----------|---------|---------|-------|-----------------|
-| FS.SYS | 0x0800 | 1 KB (2 sec) | 2 KB (4 sec) | 6 KB |
-| SHELL.SYS | 0x3000 | 7 KB (14 sec) | 7 KB (14 sec) | 2 KB |
-| KERNEL.SYS | 0x5000 | 3.5 KB (7 sec) | 5 KB (10 sec) | 4.5 KB |
+| Component | Release | Debug | Max allowed |
+|-----------|---------|-------|-------------|
+| FS.SYS | 2.5 KB (5 sec) | 3.5 KB (7 sec) | Limited by module area end |
+| MM.SYS | 1 KB (2 sec) | 1.5 KB (3 sec) | Limited by module area end |
+| SHELL.SYS | 7 KB (14 sec) | 9 KB (18 sec) | Limited by module area end |
+| KERNEL.SYS | 4 KB (8 sec) | 7 KB (14 sec) | 8 KB (fixed at 0x5000) |
 
-Each binary's header contains a conditional sector count (`%ifdef DEBUG`),
-so the loader reads the correct size at runtime.  No code changes are needed
-to accommodate the larger debug binaries — the existing load logic handles it.
+All modules (FS, MM, SHELL) must fit below MODULE_AREA_END (0x5000).
+The kernel validates this at boot time.  KERNEL.SYS remains at the fixed
+address 0x5000 with an 8 KB maximum (to 0x6FFF, before the stack canary).
 
-The **disk layout** does differ (files pack at different sector offsets),
-but this is transparent because the MNFS directory is self-describing.
+Each binary's v2 header contains its sector count, so the loader and kernel
+read the correct size at runtime.  The MNFS directory is self-describing,
+making disk layout differences between debug and release transparent.
 See DEBUGGING.md §8.5 for the full disk layout comparison.
 
 ---

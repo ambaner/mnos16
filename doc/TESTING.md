@@ -1,7 +1,7 @@
 # Unit Testing — Design Document
 
-**Version:** 2.1  
-**Status:** Tier 1 implemented (v0.9.13); 176 tests across 10 modules; branch coverage + trend tracking  
+**Version:** 2.2  
+**Status:** Tier 1 implemented (v0.9.15); 240 tests across 13 modules; branch coverage + trend tracking
 **Prerequisite:** Python 3.9+, `pip install -r tests/requirements.txt` (unicorn, pytest, capstone)
 
 ---
@@ -261,7 +261,7 @@ Coverage works at the instruction-address level:
    - GitHub Actions Job Summary (markdown table)
 
 4. **GitHub Pages deployment:** The HTML report is published to
-   `https://<user>.github.io/mini-os/coverage/`
+   `https://<user>.github.io/mnos16/coverage/`
 
 ---
 

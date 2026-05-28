@@ -1,0 +1,89 @@
+name: Update Landing Page on Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  update-landing-page:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+
+      - name: Update version and assets in index.html
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          echo "Updating to $TAG"
+
+          # Update version badge in hero
+          sed -i -E "s/Latest: v[0-9]+\.[0-9]+\.[0-9]+/Latest: $TAG/" index.html
+
+          ASSETS_JSON='${{ toJSON(github.event.release.assets) }}'
+
+          # Get the 5 most recent previous releases
+          PREV_RELEASES=$(gh api repos/ambaner/mnos16/releases --jq '.[1:6] | .[].tag_name')
+
+          python3 -c "
+          import json, re
+
+          assets = json.loads('''$ASSETS_JSON''')
+          tag = '$TAG'
+          prev = '''$PREV_RELEASES'''.strip().split('\n')
+
+          # Build latest download box
+          first_asset = assets[0] if assets else None
+          latest_html = '<div class=\"download-latest\">\n'
+          latest_html += '                    <div>\n'
+          latest_html += f'                        <div class=\"version\">MNOS16 {tag}</div>\n'
+          latest_html += '                        <div class=\"meta\">Latest stable release</div>\n'
+          latest_html += '                    </div>\n'
+          if first_asset:
+              latest_html += f'                    <a class=\"btn\" href=\"{first_asset[\"browser_download_url\"]}\">&#x2B07;&#xFE0F; {first_asset[\"name\"]}</a>\n'
+          latest_html += '                </div>'
+
+          # Additional assets
+          additional_html = ''
+          if len(assets) > 1:
+              additional_html = f'\n                <br>\n                <h4 style=\"font-size:0.9rem; color: var(--text-muted); margin-bottom:0.5rem;\">Additional Downloads ({tag})</h4>\n                <ul>\n'
+              for a in assets[1:]:
+                  additional_html += f'                    <li><a href=\"{a[\"browser_download_url\"]}\">{a[\"name\"]}</a></li>\n'
+              additional_html += '                </ul>'
+
+          # Previous releases (max 5)
+          prev_html = '\n                <br>\n                <h4 style=\"font-size:0.9rem; color: var(--text-muted); margin-bottom:0.5rem;\">Previous Releases</h4>\n                <ul>\n'
+          for p in prev[:5]:
+              if p:
+                  prev_html += f'                    <li><a href=\"https://github.com/ambaner/mnos16/releases/tag/{p}\">{p}</a></li>\n'
+          prev_html += '                </ul>'
+
+          with open('index.html', 'r') as f:
+              html = f.read()
+
+          # Replace everything between Downloads </h3> and the View All Releases button
+          pattern = r'(<h3><span class=\"card-icon icon-download\">.*?Downloads</h3>)(.*?)(\s*<br>\s*<a class=\"btn btn-outline\")'
+          replacement = r'\1\n' + latest_html + additional_html + prev_html + r'\3'
+          html = re.sub(pattern, replacement, html, count=1, flags=re.DOTALL)
+
+          # Update MNOS16 version text
+          html = re.sub(r'MNOS16 v[0-9]+\.[0-9]+\.[0-9]+', f'MNOS16 {tag}', html)
+
+          with open('index.html', 'w') as f:
+              f.write(html)
+          "
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "Update landing page to ${{ github.event.release.tag_name }}"
+          git push

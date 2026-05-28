@@ -1,0 +1,67 @@
+name: Update Landing Page Docs
+
+on:
+  push:
+    branches: [main]
+    paths: ['doc/**']
+
+permissions:
+  contents: write
+
+jobs:
+  update-docs-list:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main-src
+
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: Regenerate docs section
+        run: |
+          cd main-src/doc
+          # Build the list of doc links (exclude non-md files)
+          DOCS_HTML=""
+          for f in $(ls *.md 2>/dev/null | sort); do
+            # Generate a readable title from filename
+            TITLE=$(echo "$f" | sed 's/\.md$//' | sed 's/-/ /g' | sed 's/\b\w/\u&/g')
+            DOCS_HTML="${DOCS_HTML}                    <li><a href=\"https://github.com/ambaner/mnos16/blob/main/doc/${f}\">${TITLE}</a></li>\n"
+          done
+
+          cd ../../gh-pages
+
+          # Replace the docs list between markers
+          # Find the docs card and replace its <ul>...</ul> content
+          python3 -c "
+          import re
+
+          with open('index.html', 'r') as f:
+              html = f.read()
+
+          docs_html = '''$DOCS_HTML'''
+
+          # Find the Design Documentation card's ul
+          pattern = r'(Design Documentation</h3>\s*<ul>)(.*?)(</ul>)'
+          replacement = r'\1\n' + docs_html + r'                \3'
+          html = re.sub(pattern, replacement, html, count=1, flags=re.DOTALL)
+
+          with open('index.html', 'w') as f:
+              f.write(html)
+          "
+
+      - name: Commit and push
+        run: |
+          cd gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "Auto-update docs list on landing page"
+          git push

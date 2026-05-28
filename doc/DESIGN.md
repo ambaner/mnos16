@@ -7,7 +7,7 @@ architecture. The project is educational — designed so anyone can clone the re
 build a bootable disk image, and run it in a Hyper-V virtual machine with no prior
 OS-development experience.
 
-The current milestone is **M12: Text Editor + MNOS16 Rename** — the MBR chain-loads a
+The current milestone is **M13: Process Spawn** — the MBR chain-loads a
 minimal VBR, which finds and loads LOADER.SYS from the MNFS directory, LOADER
 enables A20 and presents a boot menu, the kernel installs INT 0x80 syscalls,
 loads FS.SYS (filesystem module with INT 0x81 API supporting read and write),
@@ -15,11 +15,13 @@ loads MM.SYS (heap allocator with INT 0x82 API), and finally loads the
 interactive shell (SHELL.SYS) — all file locations discovered via directory
 lookup, no hardcoded disk offsets.  The shell can load and execute user
 programs (`.MNX` files) from disk into a 30 KB Transient Program Area, with
-structured argc/argv parsing for command-line arguments.  The filesystem
+structured argc/argv parsing for command-line arguments.  Programs can chain
+(SYS_EXEC overlays a new program) or nest (SYS_SPAWN launches a child and
+reloads the parent on exit).  The filesystem
 supports runtime file creation, deletion (tombstone-based), and renaming.
 EDIT.MNX provides a full-screen text editor with gap buffer, modal dialogs,
 Find/Replace All, and menu hotkeys.
-A Python + Unicorn Engine test framework provides 160 unit tests with coverage
+A Python + Unicorn Engine test framework provides 240 unit tests across 11 modules with coverage
 reporting.  Debug builds add serial logging, syscall tracing, user-mode debug
 syscalls, assertion macros, INT depth tracking, DAP hex dumps, and CPU fault
 handlers.  Fault handlers are present in both release and debug builds (PIC
@@ -359,8 +361,9 @@ Sector 2051+            → Files packed contiguously:
                             KERNELD.SYS (14 sectors)
                             SHELLD.SYS  (16 sectors)
                             MMD.SYS     (2 sectors)
-                            HELLO.MNX   (1 sector)
-                            MNMON.MNX   (4 sectors)
+                            MNMON.MNX   (5 sectors)
+                            EDIT.MNX    (13 sectors)
+                            SYSINFO.MNX (6 sectors)
 Remaining sectors       → Zeroed (available for future files)
 ```
 
@@ -413,30 +416,11 @@ matching `.MNX` file and executes it if found (see
 ### 3.3 `sysinfo` Program (SYSINFO.MNX)
 
 A standalone user program (6 sectors, 3 KB) that displays five pages of system
-information, with "Press any key..." between each page and a screen clear before
-each new page.  Run from the shell prompt by typing `sysinfo`.
+information (CPU, memory, BDA, video/disk, IVT).  Run from the shell prompt by
+typing `sysinfo`.
 
-| Page | Title | Information |
-|------|-------|-------------|
-| 1 | CPU Information | CPUID vendor string, family/model/stepping, feature flags (FPU, TSC, MSR, CX8, PGE, CMOV, MMX, SSE/2/3/4.1/4.2), hypervisor detection + vendor |
-| 2 | Memory | INT 12h conventional memory, INT 15h AH=88h extended memory, E820 memory map |
-| 3 | BIOS Data Area | COM/LPT port addresses, equipment word, video mode, columns, page size |
-| 4 | Video & Disk | Current video mode, cursor position, video memory base, boot drive geometry, EDD version/total sectors/bytes per sector |
-| 5 | IVT Sample | First 8 interrupt vectors (INT 0-7) with descriptions |
-
-#### CPUID Detection
-
-The CPUID instruction (available on 486+) is detected by attempting to flip bit 21
-(the ID flag) in EFLAGS.  If the bit toggles, CPUID is supported.  Leaf 0
-returns the 12-byte vendor string; leaf 1 returns the CPU family, model, stepping,
-and feature flags in EDX/ECX.  When the hypervisor-present flag (ECX bit 31) is
-set, leaf 0x40000000 returns the hypervisor vendor string (e.g., "Microsoft Hv").
-
-#### EDD (Enhanced Disk Drive)
-
-INT 13h AH=41h checks for EDD extension support.  If present, AH=48h returns
-an extended parameter block with total sector count (64-bit) and bytes per sector,
-providing more detail than the legacy CHS geometry from AH=08h.
+> **📄 Full specification**: See [SYSINFO.md](SYSINFO.md) for page details,
+> CPUID detection, EDD queries, and source structure.
 
 ### 3.4 `mem` Command
 
@@ -491,13 +475,13 @@ but prints a warning.
 Displays static version and build information:
 
 ```
-  MNOS v0.9.9
+  MNOS v0.9.15
   Arch:      x86 real mode (16-bit)
   Assembler: NASM
   Platform:  Hyper-V Gen 1
   Boot:      MBR -> VBR -> LOADER -> KERNEL -> FS -> MM -> SHELL
   Disk:      16 MB fixed VHD
-  Source:    github.com/ambaner/mini-os
+  Source:    github.com/ambaner/mnos16
 ```
 
 ### 3.8 Shell Subroutines
@@ -550,15 +534,22 @@ for backward compatibility.
 
 User programs are `.MNX` executables loaded into the Transient Program Area
 (TPA) at 0x8000 by the shell.  They use the MNEX binary format with an `'MNEX'`
-header.  Two example programs ship with mini-os:
+header.  Three user programs ship with MNOS16:
 
 | Program | Description |
 |---------|-------------|
-| `HELLO.MNX` | Hello World — prints a message and exits (1 sector) |
-| `MNMON.MNX` | Machine monitor — WinDbg-style memory inspector with 11 commands: `db`, `dw`, `eb`, `ew`, `g`, `di`, `bib`, `ivt`, `mcb`, `?` (4 sectors) |
+| `MNMON.MNX` | Machine monitor — WinDbg-style memory inspector with 11 commands (5 sectors) |
+| `EDIT.MNX` | Full-screen text editor — gap buffer, Find/Replace, modal dialogs (13 sectors) |
+| `SYSINFO.MNX` | System information — 5 pages of hardware/BIOS details (6 sectors) |
 
 > **📄 Full specification**: See [PROGRAM-LOADER.md](PROGRAM-LOADER.md) for
 > the program loading mechanism, validation layers, and TPA layout.
+>
+> **📄 SYSINFO reference**: See [SYSINFO.md](SYSINFO.md) for page details and
+> hardware queries.
+>
+> **📄 EDIT reference**: See [EDITOR.md](EDITOR.md) for the text editor
+> architecture and commands.
 >
 > **📄 MNMON reference**: See [MNMON.md](MNMON.md) for the machine monitor
 > command reference and usage examples.
@@ -578,17 +569,25 @@ of every build (`build.bat` / `build.ps1`).
 
 | Tier | Scope | Engine | Status |
 |------|-------|--------|--------|
-| **Tier 1** | Pure logic (no INT calls) | Unicorn Engine | ✅ Implemented (64 tests) |
+| **Tier 1** | Pure logic (no INT calls) | Unicorn Engine | ✅ Implemented (240+ tests) |
 | **Tier 2** | Syscall-level (INT hooks) | Unicorn + hooks | 🔮 Planned |
 | **Tier 3** | Full system (boot-to-shell) | QEMU headless | 🔮 Planned |
 
 ### 4.2 Current Test Coverage
 
-| Module | Tests | What's tested |
-|--------|-------|---------------|
-| `shell_parse_args` | 15 | Null/empty input, single/multi args, spaces, tabs, quoted strings, max overflow |
-| `run_parse_filename` | 9 | Simple names, extensions, case conversion, argument extraction, truncation |
-| `strcmp` | 11 | Equal, different, prefix mismatch, empty strings, case sensitivity, long strings |
+| Module | What's tested |
+|--------|---------------|
+| `cmdmatch` | Command name matching logic |
+| `edit_find` | Editor find/search functionality |
+| `edit_fname` | Editor filename parsing |
+| `edit_gap` | Gap buffer operations (insert, delete, move) |
+| `exec_parse_args` | Program execution argument parsing |
+| `fs_write` | Filesystem write/create/delete operations |
+| `mm_allocator` | Memory manager allocation/free |
+| `shell_parse_args` | Shell command-line argument parsing |
+| `run_parse_filename` | Program filename extraction from input |
+| `spawn_state` | Process spawn/reload state machine |
+| `strcmp` | String comparison |
 
 ### 4.3 Coverage Reporting
 

@@ -1026,52 +1026,56 @@ kernel-maintained data without actually transitioning to ring 0.
 | 2 (32-bit) | Protected mode | `int 0x80` → IDT | ASM dispatch table | C functions | Hardware (ring 0/3) |
 | 3 (64-bit) | Long mode | `syscall` → MSR | ASM dispatch table | C functions | Hardware (ring 0/3) |
 
-### 7.2 Planned Syscall Table
+### 7.2 Syscall Table
 
 The same logical operations are available across all modes.  The calling
 convention and mechanism change, but the **function numbers stay the same**:
 
-| Number | Name | Description | 16-bit impl. | 32-bit impl. |
-|--------|------|-------------|--------------|--------------|
-| 0 | `SYS_PRINT_STRING` | Print null-terminated string | BIOS int 10h | VGA framebuffer |
-| 1 | `SYS_PRINT_CHAR` | Print single character | BIOS int 10h | VGA framebuffer |
-| 2 | `SYS_READ_KEY` | Wait for and return keystroke | BIOS int 16h | 8042 port I/O |
-| 3 | `SYS_READ_SECTOR` | Read disk sector(s) | BIOS int 13h | ATA PIO port I/O |
-| 4 | `SYS_GET_VERSION` | Return OS version | Immediate value | Immediate value |
-| 5 | `SYS_EXIT` | Terminate current executable | Return to kernel | Return to kernel |
-| 6 | `SYS_EXEC` | Load and execute MNEX binary | Disk read + jump | Disk read + jump |
-| 7 | `SYS_ALLOC` | Allocate memory block | N/A (no allocator) | Kernel heap |
-| 8 | `SYS_FREE` | Free memory block | N/A | Kernel heap |
+| Number | Name | Description |
+|--------|------|-------------|
+| 0x01 | `SYS_PRINT_STRING` | Print null-terminated string |
+| 0x02 | `SYS_PRINT_CHAR` | Print single character |
+| 0x03 | `SYS_READ_KEY` | Wait for and return keystroke |
+| 0x04 | `SYS_READ_SECTOR` | Read disk sector(s) |
+| 0x05 | `SYS_GET_VERSION` | Return OS version |
+| 0x06 | `SYS_CLEAR_SCREEN` | Clear screen and home cursor |
+| 0x07 | `SYS_SET_CURSOR` | Set cursor position |
+| 0x08 | `SYS_GET_CURSOR` | Get cursor position |
+| 0x09 | `SYS_CHECK_A20` | Check A20 gate status |
+| 0x0A | `SYS_GET_CONV_MEM` | Get conventional memory size |
+| 0x0B | `SYS_GET_EXT_MEM` | Get extended memory size |
+| 0x0C | `SYS_GET_E820` | Get E820 memory map |
+| 0x0D | `SYS_REBOOT` | Reboot the system |
+| 0x0E | `SYS_GET_DRIVE_INFO` | Get drive geometry/info |
+| 0x0F | `SYS_GET_BIB` | Get BIOS Information Block |
+| 0x10 | `SYS_PRINT_HEX8` | Print 8-bit hex value |
+| 0x11 | `SYS_PRINT_HEX16` | Print 16-bit hex value |
+| 0x12 | `SYS_PRINT_DEC16` | Print 16-bit decimal value |
+| 0x13 | `SYS_WAIT_KEY` | Wait for keypress (no echo) |
+| 0x14 | `SYS_GET_EQUIP` | Get equipment list |
+| 0x15 | `SYS_GET_VIDEO` | Get video mode info |
+| 0x16 | `SYS_GET_BDA_BYTE` | Read byte from BIOS Data Area |
+| 0x17 | `SYS_GET_BDA_WORD` | Read word from BIOS Data Area |
+| 0x18 | `SYS_CPUID` | Execute CPUID instruction |
+| 0x19 | `SYS_CHECK_CPUID` | Check if CPUID is supported |
+| 0x1A | `SYS_GET_EDD` | Get Enhanced Disk Drive info |
+| 0x1B | `SYS_GET_IVT` | Get Interrupt Vector Table entry |
+| 0x1C–0x1F | *(reserved)* | Reserved for future use |
+| 0x20 | `SYS_DBG_PRINT` | Print tagged debug message (serial) |
+| 0x21 | `SYS_DBG_HEX16` | Print tagged hex value (serial) |
+| 0x22 | `SYS_DBG_REGS` | Dump registers with tag (serial) |
+| 0x23 | `SYS_EXIT` | Terminate running program |
+| 0x24 | `SYS_GET_ARGS` | Get command-line arguments (raw) |
+| 0x25 | `SYS_GET_ARGC` | Get argument count |
+| 0x26 | `SYS_GET_ARGV` | Get argument by index |
+| 0x27 | `SYS_EXEC` | Execute program (overlay, no return) |
+| 0x28 | `SYS_SPAWN` | Spawn child, reload parent on exit |
 
-**Debug syscalls (0x20–0x22):** Implemented in v0.7.1.  These are kernel-
-mediated debug output functions — user-mode code calls them instead of
-touching COM1 directly.  The caller passes a tag string (DS:BX) to identify
-the source module (e.g., `"SHL"` for the shell).  All are no-ops in release
-builds.  See `syscalls.inc` and `doc/DEBUGGING.md` §4.7 for details.
-
-| 0x20 | `SYS_DBG_PRINT` | Print tagged debug message | Serial (COM1) | Serial / syslog |
-| 0x21 | `SYS_DBG_HEX16` | Print tagged hex value | Serial (COM1) | Serial / syslog |
-| 0x22 | `SYS_DBG_REGS`  | Dump registers with tag | Serial (COM1) | Serial / syslog |
-
-**Program loader syscalls (0x23–0x24):** Implemented in v0.9.6.  These support
-the program loader — SYS_EXIT allows programs to terminate from any call depth,
-and SYS_GET_ARGS provides access to command-line arguments passed via `run`.
-
-| 0x23 | `SYS_EXIT` | Terminate running program | Restore shell SP + ret | — |
-| 0x24 | `SYS_GET_ARGS` | Get command-line arguments | Read [SHELL_ARGS_PTR] | — |
-
-**Parsed argument syscalls (0x25–0x26):** Implemented in v0.9.8.  These provide
-structured argc/argv access to command-line arguments parsed by the shell.
-
-| 0x25 | `SYS_GET_ARGC` | Get argument count | CL = argc from [ARGV_ARGC] | — |
-| 0x26 | `SYS_GET_ARGV` | Get argument by index | CL=index → SI=string, CX=len; CF if bad | — |
-
-**Program execution syscall (0x27):** Implemented in v0.9.15.  Allows a running
-program to replace itself with another .MNX program (overlay exec, similar to
-Unix `execve` without `fork`).
-
-| 0x27 | `SYS_EXEC` | Execute program (overlay) | DS:SI=filename, DS:DI=args; no return on success; CF+AX on failure | — |
-| 0x28 | `SYS_SPAWN` | Spawn child, reload parent on exit | DS:SI=child filename, DS:DI=args, DS:BX=parent filename; no return on success; CF+AX on failure | — |
+**Notes:**
+- Debug syscalls (0x20–0x22) are no-ops in release builds. The caller passes
+  a tag string (DS:BX) to identify the source module.
+- Syscalls 0x1C–0x1F are reserved and will trap if called.
+- See individual syscall documentation above for detailed calling conventions.
 
 `SYS_EXEC` interface:
 - **Input:** AH=0x27, DS:SI = 11-byte filename (8.3 padded uppercase), DS:DI = pointer to NUL-terminated args (0 = no args)

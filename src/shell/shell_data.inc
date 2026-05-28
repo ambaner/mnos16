@@ -45,7 +45,7 @@ msg_ver_rest    db '  Arch:      x86 real mode (16-bit)', 13, 10
                 db '  Filesystem: MNFS v1 (read/write, INT 0x81)', 13, 10
                 db '  Memory:    HMA heap (64 KB) + TPA (30 KB)', 13, 10
                 db '  Disk:      16 MB fixed VHD', 13, 10
-                db '  Source:    github.com/ambaner/mini-os', 13, 10, 0
+                db '  Source:    github.com/ambaner/mnos16', 13, 10, 0
 
 ; --- ver command strings -----------------------------------------------------
 ; --- Memory strings (shared with mem command) ---------------------------------

@@ -209,7 +209,7 @@ def _generate_html_report(out, results, branch_results, overall_pct, overall_bra
         Generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
         · <a href="trend.html">Coverage Trend →</a>
         · Tier 1 only (pure-logic unit tests via Unicorn Engine)
-        · See <a href="https://github.com/AmbaneP/mini-os/blob/main/doc/TESTING.md">TESTING.md</a>
+        · See <a href="https://github.com/AmbaneP/mnos16/blob/main/doc/TESTING.md">TESTING.md</a>
     </p>
 </body>
 </html>"""

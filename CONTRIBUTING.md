@@ -67,7 +67,7 @@ Thanks for your interest in contributing! This is an educational project buildin
 ## Architecture Overview
 
 ```
-src/boot/mbr.asm  →  NASM  →  build/boot/mbr.bin  →  create-vhd  →  build/boot/mini-os.vhd
+src/boot/mbr.asm  →  NASM  →  build/boot/mbr.bin  →  create-vhd  →  build/boot/mnos16.vhd
                                                                             ↓
                                                                       setup-vm.ps1
                                                                             ↓

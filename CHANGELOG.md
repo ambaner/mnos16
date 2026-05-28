@@ -6,7 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [0.9.16] - 2026-05-28
+## [0.9.15] - 2026-05-28
+
+### Added
+- **SYS_EXEC syscall (AH=0x27)** — allows a running program to replace itself
+  with another .MNX program (overlay exec). New program inherits shell return
+  frame and arguments. Caller is destroyed on success; returns CF+error code
+  on failure (file not found, not executable, too large).
+- **SYS_SPAWN syscall (AH=0x28)** — spawns a child program and reloads the
+  caller from disk when the child exits. Supports nesting up to 4 levels deep
+  via depth-indexed `spawn_parent_stack`. Enables debugger/monitor patterns
+  (MNMON `x` command).
+- **MNMON `x` command uses SYS_SPAWN** — launches a program, returns to MNMON
+  when it finishes (MNMON survives across child execution).
+- **Kernel `exec_parse_args`** — kernel-local argument tokenizer for SYS_EXEC,
+  identical semantics to shell_parse_args but operates on kernel scratch space.
+- **Kernel exec scratch data** — `exec_fname_buf` (11 bytes), `exec_args_buf`
+  (128 bytes), `exec_entry_addr`, `spawn_parent_stack` (44 bytes).
+- **17 new unit tests** for exec_parse_args and the SYS_EXEC binary contract
+  (total: 234 tests).
 
 ### Fixed
 - **Nested SYS_SPAWN crash** — spawning multiple levels deep (e.g., mnmon→mnmon→edit)
@@ -25,52 +43,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   path now re-installs the trampoline for the next unwind level.
 
 ### Changed
-- **SYS_SPAWN now supports nesting** — replaced single `spawn_parent_fname`
-  with a depth-indexed `spawn_parent_stack` (4 levels × 11 bytes).
-  `spawn_depth` tracks current nesting level.
-- **SYS_EXIT reload logic** — uses `spawn_depth` as index into parent stack;
-  distinguishes outermost (restore shell ret) vs. still-nested (re-install
-  trampoline) cases.
-- `kernel_data.inc` — replaced `spawn_parent_fname` with `spawn_parent_stack`
+- `syscalls.inc` — added SYS_EXEC (0x27), SYS_SPAWN (0x28), bumped SYSCALL_MAX to 0x28.
+- `kernel_syscall.inc` — added .fn_exec, .fn_spawn handlers; modified .fn_exit
+  to use `spawn_depth` as index into parent stack; distinguishes outermost
+  (restore shell ret) vs. still-nested (re-install trampoline) cases.
+- `kernel_data.inc` — added exec scratch space, `spawn_parent_stack`
   (44 bytes), `spawn_depth`, and `spawn_pending` flag.
-- `doc/SYSTEM-CALLS.md` — updated SYS_SPAWN semantics for nesting and rollback.
-- `doc/PROGRAM-LOADER.md` §6.4 — rewritten to describe stack-based spawn model.
+- `programs/mnmon.asm` — `x` command now uses SYS_SPAWN (was SYS_EXEC);
+  added `mnmon_fname` data for parent reload.
+- `doc/SYSTEM-CALLS.md` — documented SYS_EXEC and SYS_SPAWN interfaces
+  including nesting semantics and rollback.
 - `doc/ABI.md` — bumped to v2.0: fixed stale syscall numbers (SYS_EXIT=0x23,
   SYS_GET_ARGC=0x25, SYS_GET_ARGV=0x26, SYS_GET_VERSION=0x05), added
   SYS_SPAWN section, documented trampoline/ret behavior.
-- Version bumped to 0.9.16.
-
----
-
-## [0.9.15] - 2026-05-26
-
-### Added
-- **SYS_EXEC syscall (AH=0x27)** — allows a running program to replace itself
-  with another .MNX program (overlay exec). New program inherits shell return
-  frame and arguments. Caller is destroyed on success; returns CF+error code
-  on failure (file not found, not executable, too large).
-- **SYS_SPAWN syscall (AH=0x28)** — spawns a child program and reloads the
-  caller from disk when the child exits. One-shot: parent restarts fresh with
-  no state preserved. Enables debugger/monitor patterns (MNMON `x` command).
-- **MNMON `x` command uses SYS_SPAWN** — launches a program, returns to MNMON
-  when it finishes (MNMON survives across child execution).
-- **Kernel `exec_parse_args`** — kernel-local argument tokenizer for SYS_EXEC,
-  identical semantics to shell_parse_args but operates on kernel scratch space.
-- **Kernel exec scratch data** — `exec_fname_buf` (11 bytes), `exec_args_buf`
-  (128 bytes), `exec_entry_addr`, `spawn_parent_fname` (11 bytes).
-- **17 new unit tests** for exec_parse_args and the SYS_EXEC binary contract
-  (total: 234 tests).
-
-### Changed
-- `syscalls.inc` — added SYS_EXEC (0x27), SYS_SPAWN (0x28), bumped SYSCALL_MAX to 0x28.
-- `kernel_syscall.inc` — added .fn_exec, .fn_spawn handlers; modified .fn_exit
-  to check spawn_parent_fname and reload parent if set.
-- `kernel_data.inc` — added exec scratch space + spawn_parent_fname (154 bytes).
-- `programs/mnmon.asm` — `x` command now uses SYS_SPAWN (was SYS_EXEC);
-  added `mnmon_fname` data for parent reload.
-- `doc/SYSTEM-CALLS.md` — documented SYS_EXEC and SYS_SPAWN interfaces.
-- `doc/ABI.md` — added §Program-to-Program Execution section.
-- `doc/PROGRAM-LOADER.md` — added §6.3 SYS_EXEC specification.
+- `doc/PROGRAM-LOADER.md` — added §6.3 SYS_EXEC, §6.4 rewritten for
+  stack-based spawn model.
 
 ---
 

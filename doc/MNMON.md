@@ -1,8 +1,8 @@
 # MNMON — Mini-OS Machine Monitor
 
 **Version:** 1.1
-**Status:** Implemented (v0.9.7)
-**Binary:** `MNMON.MNX` — 4 sectors (2048 bytes)
+**Status:** Implemented (v0.9.15)
+**Binary:** `MNMON.MNX` — 5 sectors (2560 bytes)
 
 An interactive memory monitor with **WinDbg-style command syntax**, implemented
 as a standalone user program for mini-os.
