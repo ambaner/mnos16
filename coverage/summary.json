@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-27T02:51:18.494046+00:00",
-  "overall_coverage": 33.6,
-  "total_addresses": 2779,
-  "hit_addresses": 933,
-  "branch_coverage": 90.7,
-  "branch_outcomes_total": 258,
-  "branch_outcomes_covered": 234,
+  "timestamp": "2026-05-28T23:30:43.961777+00:00",
+  "overall_coverage": 32.8,
+  "total_addresses": 3338,
+  "hit_addresses": 1096,
+  "branch_coverage": 89.7,
+  "branch_outcomes_total": 312,
+  "branch_outcomes_covered": 280,
   "routines": {
     "cmdmatch": {
       "coverage": 61.9,
@@ -39,6 +39,14 @@
       "branches_total": 20,
       "branches_full": 15
     },
+    "exec_parse_args": {
+      "coverage": 25.2,
+      "total": 254,
+      "hit": 64,
+      "branch_coverage": 84.6,
+      "branches_total": 13,
+      "branches_full": 9
+    },
     "fs_write": {
       "coverage": 23.4,
       "total": 1461,
@@ -70,6 +78,14 @@
       "branch_coverage": 87.5,
       "branches_total": 12,
       "branches_full": 9
+    },
+    "spawn_state": {
+      "coverage": 32.5,
+      "total": 305,
+      "hit": 99,
+      "branch_coverage": 85.7,
+      "branches_total": 14,
+      "branches_full": 10
     },
     "strcmp": {
       "coverage": 69.2,
