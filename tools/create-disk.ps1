@@ -77,6 +77,7 @@ param(
     [Parameter(Mandatory)][string]$ShellDbgPath,
     [Parameter(Mandatory)][string]$MmDbgPath,
     [string[]]$UserPrograms = @(),
+    [string[]]$DataFiles = @(),
     [Parameter(Mandatory)][string]$OutputPath,
     [int]$SizeMB = 16,
     [int]$PartitionStartLBA = 2048,
@@ -155,6 +156,28 @@ foreach ($progPath in $UserPrograms) {
     $files += @{ Name = $paddedName; Attr = $MNFS_ATTR_EXEC; Bytes = $progBytes }
 }
 
+# Add arbitrary data files (e.g., .BAS, .TXT).  Sector-padded with zeros;
+# MNFS stores the real byte count in the directory entry so reads return it.
+function Read-DataFile([string]$Path) {
+    $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path $Path))
+    $sectors = [math]::Ceiling($bytes.Length / 512.0)
+    $padded = [byte[]]::new($sectors * 512)
+    [Array]::Copy($bytes, 0, $padded, 0, $bytes.Length)
+    # Track real size separately
+    return @{ Padded = $padded; RealSize = $bytes.Length }
+}
+
+foreach ($dataPath in $DataFiles) {
+    $name = [System.IO.Path]::GetFileNameWithoutExtension($dataPath).ToUpper()
+    $ext  = [System.IO.Path]::GetExtension($dataPath).TrimStart('.').ToUpper()
+    if ($name.Length -gt 8) { throw "Data file basename '$name' exceeds 8 chars (8.3 limit)." }
+    if ($ext.Length -gt 3)  { throw "Data file extension '$ext' exceeds 3 chars (8.3 limit)." }
+    $paddedName = $name.PadRight(8).Substring(0, 8) + $ext.PadRight(3).Substring(0, 3)
+    $rd = Read-DataFile $dataPath
+    $files += @{ Name = $paddedName; Attr = 0; Bytes = $rd.Padded; RealSize = $rd.RealSize }
+    Write-Step ("Data file " + $paddedName + ": $($rd.RealSize) bytes (" + ($rd.Padded.Length / 512) + " sectors)")
+}
+
 if ($files.Count -gt $MNFS_MAX_ENTRIES) {
     throw "Too many files ($($files.Count)) — MNFS supports max $MNFS_MAX_ENTRIES."
 }
@@ -166,10 +189,14 @@ $totalDataSectors = 0
 foreach ($f in $files) {
     $f.StartSector = $nextSector
     $f.SizeSectors = $f.Bytes.Length / 512
-    $f.SizeBytes   = $f.Bytes.Length
+    if ($f.ContainsKey('RealSize')) {
+        $f.SizeBytes = $f.RealSize
+    } else {
+        $f.SizeBytes = $f.Bytes.Length
+    }
     $nextSector   += $f.SizeSectors
     $totalDataSectors += $f.SizeSectors
-    Write-Step "  $($f.Name): sector $($f.StartSector), $($f.SizeSectors) sectors"
+    Write-Step "  $($f.Name): sector $($f.StartSector), $($f.SizeSectors) sectors, $($f.SizeBytes) bytes"
 }
 
 # ---------- generate MNFS directory sector ----------------------------------

@@ -223,3 +223,4 @@ ed_init:
 %include "edit_msg.inc"
 %include "edit_exit.inc"
 %include "edit_data.inc"
+%include "mnoslib.inc"

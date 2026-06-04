@@ -1,7 +1,7 @@
 # Unit Testing — Design Document
 
 **Version:** 2.2  
-**Status:** Tier 1 implemented (v0.9.15); 240 tests across 13 modules; branch coverage + trend tracking
+**Status:** Tier 1 implemented (v0.9.17); 254 tests across 13 modules; branch coverage + trend tracking
 **Prerequisite:** Python 3.9+, `pip install -r tests/requirements.txt` (unicorn, pytest, capstone)
 
 ---

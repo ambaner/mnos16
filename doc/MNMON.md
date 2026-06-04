@@ -1,7 +1,7 @@
 # MNMON — Mini-OS Machine Monitor
 
 **Version:** 1.1
-**Status:** Implemented (v0.9.15)
+**Status:** Implemented (v0.9.15); nested spawn support added in v0.9.16
 **Binary:** `MNMON.MNX` — 5 sectors (2560 bytes)
 
 An interactive memory monitor with **WinDbg-style command syntax**, implemented

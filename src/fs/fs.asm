@@ -17,10 +17,35 @@
 ;   Init installs INT 0x81 in the IVT and caches the MNFS directory.
 ;
 ; INT 0x81 functions (AH = function number):
-;   0x01  FS_LIST_FILES  — Copy cached directory to caller's buffer
-;   0x02  FS_FIND_FILE   — Search for file by 8.3 name
-;   0x03  FS_READ_FILE   — Read file contents into buffer
-;   0x04  FS_GET_INFO    — Return filesystem metadata
+;   0x01  FS_LIST_FILES   — Copy cached directory to caller's buffer
+;   0x02  FS_FIND_FILE    — Search for file by 8.3 name
+;   0x03  FS_READ_FILE    — Read file contents into buffer
+;   0x04  FS_GET_INFO     — Return filesystem metadata
+;   0x05  FS_FIND_BASE    — Find file by base name only (resolves extension)
+;   0x06  FS_WRITE_FILE   — Create a new file (rejects duplicates)
+;   0x07  FS_DELETE_FILE  — Mark a file as deleted (tombstone)
+;   0x08  FS_RENAME_FILE  — Rename a file (directory entry update)
+;   0x09  FS_REPLACE_FILE — Create-or-replace atomically (new sectors first)
+;
+; -----------------------------------------------------------------------------
+; FS ABI CONTRACT (v1) — all INT 0x81 handlers obey:
+;
+;  • Inputs are taken from registers as documented per handler.
+;  • Outputs:
+;       CF=0 → success.   Documented output registers carry results.
+;       CF=1 → error.     AL = FS_ERR_* code when documented.
+;  • Register preservation (full 32-bit width):
+;       All registers except those listed as outputs (and AL on CF=1)
+;       are preserved across the call. Internal helpers (fs_flush_dir,
+;       fs_recalc_total) also obey this contract — DO NOT regress.
+;  • FLAGS:  only CF is defined on return.  All other flags are undefined.
+;  • Memory side effects:  each handler's docstring lists what it writes
+;       (disk sectors, caller buffer, directory cache, etc).
+;
+; If you touch any handler, audit the push/pop sequence carefully —
+; especially when ECX/EDX/EAX are used internally. The BASIC SAVE bug
+; (2026-06-04) was caused by FS_DELETE_FILE silently clobbering DX.
+; -----------------------------------------------------------------------------
 ;
 ; See doc/FILESYSTEM.md for the complete specification.
 ;
@@ -120,7 +145,7 @@ fs_syscall_handler:
     call serial_puts
 
     movzx bx, ah
-    cmp bx, 8
+    cmp bx, FS_SYSCALL_MAX
     ja .fs_trace_noname
     shl bx, 1
     mov si, [cs:.fs_name_table + bx]
@@ -158,6 +183,8 @@ fs_syscall_handler:
     je .fn_delete_file
     cmp ah, FS_RENAME_FILE
     je .fn_rename_file
+    cmp ah, FS_REPLACE_FILE
+    je .fn_replace_file
 
     ; Unknown function
     jmp fs_iret_cf_set
@@ -173,6 +200,7 @@ fs_syscall_handler:
 .fsn_06: db 'WRITE_FILE', 0
 .fsn_07: db 'DELETE_FILE', 0
 .fsn_08: db 'RENAME_FILE', 0
+.fsn_09: db 'REPLACE_FILE', 0
 .fs_name_table:
     dw 0            ; 0x00 — unused
     dw .fsn_01      ; 0x01
@@ -183,12 +211,18 @@ fs_syscall_handler:
     dw .fsn_06      ; 0x06
     dw .fsn_07      ; 0x07
     dw .fsn_08      ; 0x08
+    dw .fsn_09      ; 0x09
 %endif
 
 ; ─── FS_LIST_FILES (AH=0x01) ─────────────────────────────────────────────────
 ; Copy the cached 512-byte directory sector to the caller's buffer.
-; Input:  ES:BX = 512-byte destination buffer
-; Output: CL = file count, CF clear
+;
+; Input:    ES:BX = 512-byte destination buffer
+; Output on CF=0: CL = active file count (0..MNFS_MAX_ENTRIES).
+; Output on CF=1: never; this call cannot fail.
+; Preserves: all registers (full 32-bit width) EXCEPT CL.
+; Memory side effects: writes 512 bytes to caller's ES:BX buffer.
+;                      Buffer layout = 32-byte MNFS header + 15*32-byte entries.
 ; ──────────────────────────────────────────────────────────────────────────────
 .fn_list_files:
     push ax
@@ -219,18 +253,21 @@ fs_syscall_handler:
 
 ; ─── FS_FIND_FILE (AH=0x02) ──────────────────────────────────────────────────
 ; Search cached directory for a file by 11-byte 8.3 name.
-; Input:  DS:SI = pointer to 11-byte filename (8+3, space-padded, uppercase)
-; Output: CF clear = found:
+;
+; Input:    DS:SI = pointer to 11-byte filename (8+3, space-padded, uppercase)
+; Output on CF=0 (found):
 ;           EAX = start sector (partition-relative)
 ;           CX  = size in sectors
 ;           EDX = size in bytes
-;           DL (low byte of EDX) also available; DH clobbered
 ;           BL  = attribute byte
-;         CF set = not found
+; Output on CF=1: not found (no AL error code — only one failure mode).
+; Preserves: SI, DI, ES, DS, BH, plus all other registers except EAX/CX/EDX/BL.
+; Memory side effects: none.
 ; ──────────────────────────────────────────────────────────────────────────────
 .fn_find_file:
     push di
     push bx
+    push si
 
     ; Save caller's filename pointer
     mov [cs:.ff_caller_si], si
@@ -288,6 +325,7 @@ fs_syscall_handler:
     mov edx, [es:di + MNFS_ENT_BYTES]
 
     pop es                          ; Restore caller's ES
+    pop si
     pop bx
     pop di
 
@@ -296,6 +334,7 @@ fs_syscall_handler:
     jmp fs_iret_cf_clear
 
 .ff_not_found:
+    pop si
     pop bx
     pop di
     jmp fs_iret_cf_set
@@ -306,16 +345,23 @@ fs_syscall_handler:
 ; ─── FS_FIND_BASE (AH=0x05) ─────────────────────────────────────────────────
 ; Find a file by its 8-byte base name only (ignores extension).
 ; Returns the first matching entry regardless of extension.
-; Input:  DS:SI = 8-byte space-padded base name
-; Output: CF clear = found
+;
+; Input:    DS:SI = 11-byte buffer; first 8 bytes are the space-padded base
+;                   name to search for. The last 3 bytes (extension) are filled
+;                   in by this call with the found file's extension on success.
+; Output on CF=0 (found):
 ;           EAX = start sector (partition-relative)
 ;           CX  = file size in sectors
 ;           EDX = file size in bytes
 ;           BL  = attribute byte
-;         CF set = not found
+;           DS:[SI+8..SI+10] now contains the extension of the matched file.
+; Output on CF=1: not found.
+; Preserves: SI, DI, ES, DS, BH, plus all registers except EAX/CX/EDX/BL.
+; Memory side effects: WRITES 3 bytes (the extension) into DS:[SI+8..SI+10].
 ; ──────────────────────────────────────────────────────────────────────────────
 .fn_find_base:
     push di
+    push si
 
     ; Save caller's name pointer
     mov [cs:.fb_caller_si], si
@@ -382,6 +428,7 @@ fs_syscall_handler:
     mov eax, [es:di + MNFS_ENT_START]
 
     pop es                          ; Restore caller's ES
+    pop si
     pop di
 
     ; Return attribute in BL
@@ -389,6 +436,7 @@ fs_syscall_handler:
     jmp fs_iret_cf_clear
 
 .fb_not_found:
+    pop si
     pop di
     jmp fs_iret_cf_set
 
@@ -397,21 +445,25 @@ fs_syscall_handler:
 
 ; ─── FS_READ_FILE (AH=0x03) ──────────────────────────────────────────────────
 ; Read a file's contents from disk into the caller's buffer.
-; Internally finds the file, then uses INT 0x80 SYS_READ_SECTOR.
-; Input:  DS:SI = 11-byte filename
-;         ES:BX = buffer to read into
-;         CX    = maximum sectors to read
-; Output: CF clear = success, CX = sectors actually read
-;         CF set   = error (file not found or disk I/O error)
+; Internally finds the file, then uses BIOS INT 0x13 AH=0x42.
+;
+; Input:    DS:SI = 11-byte filename
+;           ES:BX = buffer to read into
+;           CX    = maximum sectors to read
+; Output on CF=0: AX = file size in bytes (low 16 bits), CX = sectors read.
+; Output on CF=1: error (file not found or disk I/O error). No AL code.
+; Preserves: SI, BX, DI, DX, ES, DS plus all other registers except AX/CX.
+; Memory side effects: writes file data sectors to caller's ES:BX buffer.
 ; ──────────────────────────────────────────────────────────────────────────────
 .fn_read_file:
     push dx
     push ax
 
-    ; Save caller's buffer and max sectors
+    ; Save caller's buffer, max sectors, and SI (filename ptr)
     mov [cs:.rf_buf_off], bx
     mov [cs:.rf_buf_seg], es
     mov [cs:.rf_max], cx
+    mov [cs:.rf_caller_si], si
 
     ; Find the file first (reuse our own find logic)
     ; DS:SI already points to filename
@@ -501,11 +553,17 @@ fs_syscall_handler:
     pop cx
 %endif
 
-    mov si, .rf_dap                 ; DS:SI → our DAP (DS=0, flat model)
+    ; --- Set DS = CS so BIOS sees our DAP at the right segment (symmetry
+    ; with FS_WRITE_FILE / fs_flush_dir; defensive against non-zero caller DS).
+    push ds
+    push cs
+    pop ds
+    mov si, .rf_dap                 ; DS:SI → our DAP
     mov dl, [BIB_DRIVE]
     mov ah, 0x42
     sti                             ; BIOS needs interrupts for DMA
     int 0x13
+    pop ds
     jc .rf_disk_err
 
 %ifdef DEBUG
@@ -519,6 +577,7 @@ fs_syscall_handler:
     ; Success — return AX=bytes, CX=sectors
     mov cx, [cs:.rf_actual]
     mov ax, [cs:.rf_bytes]          ; AX = file size in bytes (low 16 bits)
+    mov si, [cs:.rf_caller_si]      ; Restore caller SI
     pop bx
     pop di
     add sp, 2                       ; Discard saved AX (replaced with byte count)
@@ -533,6 +592,7 @@ fs_syscall_handler:
     call serial_crlf
     pop si
 %endif
+    mov si, [cs:.rf_caller_si]      ; Restore caller SI
     pop bx
     pop di
     pop ax
@@ -551,17 +611,19 @@ fs_syscall_handler:
     pop ax
     pop si
 %endif
+    mov si, [cs:.rf_caller_si]      ; Restore caller SI
     pop bx
     pop di
     pop ax
     pop dx
     jmp fs_iret_cf_set
 
-.rf_buf_off:  dw 0
-.rf_buf_seg:  dw 0
-.rf_max:      dw 0
-.rf_actual:   dw 0
-.rf_bytes:    dd 0
+.rf_buf_off:   dw 0
+.rf_buf_seg:   dw 0
+.rf_max:       dw 0
+.rf_actual:    dw 0
+.rf_bytes:     dd 0
+.rf_caller_si: dw 0
 
 ; Local DAP for direct INT 0x13 (avoids nested INT 0x80)
 .rf_dap:
@@ -575,9 +637,13 @@ fs_syscall_handler:
 
 ; ─── FS_GET_INFO (AH=0x04) ───────────────────────────────────────────────────
 ; Return filesystem metadata.
-; Input:  none
-; Output: AL = MNFS version, CL = file count, CH = max entries (15)
-;         DX = total sectors used, BX = total data area capacity (sectors)
+;
+; Input:    none.
+; Output on CF=0: AL = MNFS version, CL = file count, CH = max entries (15),
+;                 DX = total sectors used, BX = total data capacity (sectors).
+; Output on CF=1: never; this call cannot fail.
+; Preserves: all registers (full 32-bit width) EXCEPT AL/CL/CH/DX/BX (outputs).
+; Memory side effects: none.
 ; ──────────────────────────────────────────────────────────────────────────────
 .fn_get_info:
     mov al, [cs:dir_cache + MNFS_HDR_VERSION]
@@ -589,19 +655,26 @@ fs_syscall_handler:
 
 ; ─── FS_WRITE_FILE (AH=0x06) ─────────────────────────────────────────────────
 ; Create a new file on disk (append-only allocation).
-; Input:  DS:SI = 11-byte filename (8.3, space-padded, uppercase)
-;         ES:BX = data buffer to write
-;         ECX   = file size in bytes (0 = empty directory entry only)
-;         DL    = attribute byte
-; Output: CF clear = success
-;         CF set   = error, AL = error code (FS_ERR_*)
+;
+; Input:    DS:SI = 11-byte filename (8.3, space-padded, uppercase)
+;           ES:BX = data buffer to write
+;           ECX   = file size in bytes (0 = empty directory entry only)
+;           DL    = attribute byte
+; Output on CF=0: success.
+; Output on CF=1: AL = error code
+;                 (FS_ERR_EXISTS, FS_ERR_DIR_FULL, FS_ERR_DISK_FULL, FS_ERR_IO).
+; Preserves: all registers (full 32-bit width) EXCEPT AL on error.
+; Memory side effects: writes data sectors + 1 directory sector to disk;
+;                      mutates internal dir_cache.
+; Note: rejects duplicate filenames. Use FS_REPLACE_FILE for create-or-replace.
 ; ──────────────────────────────────────────────────────────────────────────────
 .fn_write_file:
     push es
-    push di
+    push edi
     push si
-    push bx
-    push dx
+    push ebx
+    push ecx
+    push edx
 
     ; --- Save caller parameters -----------------------------------------------
     mov [cs:.wf_caller_si], si
@@ -811,10 +884,11 @@ fs_syscall_handler:
     jc .wf_err_io_post              ; Flush failed (dir mutated but disk out of sync)
 
     ; --- Success --------------------------------------------------------------
-    pop dx
-    pop bx
+    pop edx
+    pop ecx
+    pop ebx
     pop si
-    pop di
+    pop edi
     pop es
     jmp fs_iret_cf_clear
 
@@ -834,10 +908,11 @@ fs_syscall_handler:
 .wf_err_io_post:
     mov al, FS_ERR_IO
 .wf_fail:
-    pop dx
-    pop bx
+    pop edx
+    pop ecx
+    pop ebx
     pop si
-    pop di
+    pop edi
     pop es
     jmp fs_iret_cf_set
 
@@ -862,15 +937,20 @@ fs_syscall_handler:
 ; Delete a file by marking its directory entry as a tombstone.
 ; System files (ATTR_SYSTEM) cannot be deleted.
 ; If the file is the physically last one, space is reclaimed.
-; Input:  DS:SI = 11-byte filename
-; Output: CF clear = success
-;         CF set   = error, AL = error code
+;
+; Input:    DS:SI = 11-byte filename
+; Output on CF=0: success.
+; Output on CF=1: AL = error code (FS_ERR_NOT_FOUND, FS_ERR_PROTECTED, FS_ERR_IO).
+; Preserves: all registers (full 32-bit width) EXCEPT AL on error.
+; Memory side effects: writes directory cache & 1 sector to disk.
 ; ──────────────────────────────────────────────────────────────────────────────
 .fn_delete_file:
     push es
-    push di
-    push bx
-    push cx
+    push edi
+    push ebx
+    push ecx
+    push edx
+    push si
 
     ; Save caller's filename
     mov [cs:.df_caller_si], si
@@ -927,9 +1007,11 @@ fs_syscall_handler:
     jc .df_err_io
 
     ; --- Success --------------------------------------------------------------
-    pop cx
-    pop bx
-    pop di
+    pop si
+    pop edx
+    pop ecx
+    pop ebx
+    pop edi
     pop es
     jmp fs_iret_cf_clear
 
@@ -939,9 +1021,11 @@ fs_syscall_handler:
 .df_err_io:
     mov al, FS_ERR_IO
 .df_fail:
-    pop cx
-    pop bx
-    pop di
+    pop si
+    pop edx
+    pop ecx
+    pop ebx
+    pop edi
     pop es
     jmp fs_iret_cf_set
 
@@ -949,16 +1033,21 @@ fs_syscall_handler:
 
 ; ─── FS_RENAME_FILE (AH=0x08) ────────────────────────────────────────────────
 ; Rename a file (directory entry update only, no disk data changes).
-; Input:  DS:SI = 11-byte old filename
-;         ES:DI = 11-byte new filename
-; Output: CF clear = success
-;         CF set   = error, AL = error code
+;
+; Input:    DS:SI = 11-byte old filename
+;           ES:DI = 11-byte new filename
+; Output on CF=0: success.
+; Output on CF=1: AL = error code (FS_ERR_NOT_FOUND, FS_ERR_EXISTS, FS_ERR_IO).
+; Preserves: all registers (full 32-bit width) EXCEPT AL on error.
+; Memory side effects: writes directory cache & 1 sector to disk.
 ; ──────────────────────────────────────────────────────────────────────────────
 .fn_rename_file:
     push es
-    push di
-    push bx
-    push cx
+    push edi
+    push ebx
+    push ecx
+    push edx
+    push si
 
     ; Save caller parameters
     mov [cs:.rn_old_si], si
@@ -1052,9 +1141,11 @@ fs_syscall_handler:
     jc .rn_err_io
 
     ; --- Success --------------------------------------------------------------
-    pop cx
-    pop bx
-    pop di
+    pop si
+    pop edx
+    pop ecx
+    pop ebx
+    pop edi
     pop es
     jmp fs_iret_cf_clear
 
@@ -1067,15 +1158,296 @@ fs_syscall_handler:
 .rn_err_io:
     mov al, FS_ERR_IO
 .rn_fail:
-    pop cx
-    pop bx
-    pop di
+    pop si
+    pop edx
+    pop ecx
+    pop ebx
+    pop edi
     pop es
     jmp fs_iret_cf_set
 
 .rn_old_si:  dw 0
 .rn_new_off: dw 0
 .rn_new_seg: dw 0
+
+; ─── FS_REPLACE_FILE (AH=0x09) ───────────────────────────────────────────────
+; Atomic create-or-replace: writes data to NEW sectors first, then atomically
+; updates the directory entry to point at the new data.  If the data write
+; fails, the existing file is untouched.
+;
+; Old sectors are leaked because MNFS is append-only and has no free list.
+; Acceptable for the OS's intended use; documented as a known limitation.
+;
+; Input:    DS:SI = 11-byte filename (8.3, space-padded, uppercase)
+;           ES:BX = data buffer
+;           ECX   = file size in bytes (0 = empty entry only)
+;           DL    = attribute byte
+; Output on CF=0: success (file either created or replaced).
+; Output on CF=1: AL = error code
+;                 (FS_ERR_PROTECTED, FS_ERR_DIR_FULL, FS_ERR_DISK_FULL, FS_ERR_IO).
+; Preserves: all registers (full 32-bit width) EXCEPT AL on error.
+; Memory side effects: writes data sectors + 1 dir sector to disk; mutates
+;                      internal dir_cache.
+; ──────────────────────────────────────────────────────────────────────────────
+.fn_replace_file:
+    push es
+    push edi
+    push si
+    push ebx
+    push ecx
+    push edx
+
+    ; --- Save caller parameters ---------------------------------------------
+    mov [cs:.rp_caller_si], si
+    mov [cs:.rp_buf_off], bx
+    mov [cs:.rp_buf_seg], es
+    mov [cs:.rp_size_bytes], ecx
+    mov [cs:.rp_attr], dl
+
+    ; --- Validate filename --------------------------------------------------
+    cmp byte [ds:si], 0x00
+    je .rp_err_invalid
+    cmp byte [ds:si], MNFS_DELETED
+    je .rp_err_invalid
+
+    ; --- Search for existing entry; if found, check ATTR_SYSTEM -------------
+    push cs
+    pop es                          ; ES = CS for cache access
+    mov di, dir_cache + MNFS_HDR_SIZE
+    mov cx, MNFS_MAX_ENTRIES
+    mov word [cs:.rp_existing_di], 0     ; sentinel: no existing entry
+
+.rp_find_loop:
+    cmp byte [es:di], MNFS_DELETED
+    je .rp_find_skip
+    cmp byte [es:di], 0x00
+    je .rp_find_skip
+
+    ; Compare 11 bytes
+    push cx
+    push di
+    mov si, [cs:.rp_caller_si]
+    mov cx, MNFS_NAME_LEN
+    repe cmpsb
+    pop di
+    pop cx
+    je .rp_found_existing
+
+.rp_find_skip:
+    add di, MNFS_ENTRY_SIZE
+    dec cx
+    jnz .rp_find_loop
+    jmp .rp_search_done
+
+.rp_found_existing:
+    ; Refuse to replace system files
+    test byte [es:di + MNFS_ENT_ATTR], MNFS_ATTR_SYSTEM
+    jnz .rp_err_protected
+    mov [cs:.rp_existing_di], di    ; Remember slot for in-place update
+
+.rp_search_done:
+    ; --- Choose target directory slot ---------------------------------------
+    mov di, [cs:.rp_existing_di]
+    test di, di
+    jnz .rp_have_slot               ; Reuse existing slot
+
+    ; Find a free slot (0x00 or 0xE5) — same as WRITE_FILE
+    mov di, dir_cache + MNFS_HDR_SIZE
+    mov cx, MNFS_MAX_ENTRIES
+.rp_slot_scan:
+    cmp byte [es:di], 0x00
+    je .rp_have_slot
+    cmp byte [es:di], MNFS_DELETED
+    je .rp_have_slot
+    add di, MNFS_ENTRY_SIZE
+    dec cx
+    jnz .rp_slot_scan
+    jmp .rp_err_dir_full
+
+.rp_have_slot:
+    mov [cs:.rp_slot_di], di
+
+    ; --- Calculate sectors needed = (ECX + 511) / 512 -----------------------
+    mov eax, [cs:.rp_size_bytes]
+    add eax, 511
+    shr eax, 9
+    mov [cs:.rp_sectors], ax
+
+    ; --- Calculate append start (high-water mark) ---------------------------
+    movzx eax, word [cs:dir_cache + MNFS_HDR_TOTAL]
+    add eax, MNFS_DIR_SECTOR
+    mov [cs:.rp_start], eax
+
+    ; --- Check disk capacity ------------------------------------------------
+    movzx ebx, word [cs:dir_cache + MNFS_HDR_CAPACITY]
+    movzx ecx, word [cs:dir_cache + MNFS_HDR_TOTAL]
+    add ecx, MNFS_DIR_SECTORS
+    movzx edx, word [cs:.rp_sectors]
+    add ecx, edx
+    cmp ecx, ebx
+    ja .rp_err_disk_full
+
+    ; --- Write data sectors to disk (if any) --------------------------------
+    cmp word [cs:.rp_sectors], 0
+    je .rp_update_dir               ; Zero-length file, skip data write
+
+    mov edi, [cs:.rp_start]
+    add edi, [BIB_PART_LBA]
+    mov cx, [cs:.rp_sectors]
+    mov ax, [cs:.rp_buf_seg]
+    mov [cs:.rp_dap_buf+2], ax
+    mov ax, [cs:.rp_buf_off]
+    mov [cs:.rp_dap_buf], ax
+
+.rp_write_loop:
+    mov ax, cx
+    cmp ax, MNFS_WRITE_CHUNK
+    jbe .rp_chunk_ok
+    mov ax, MNFS_WRITE_CHUNK
+.rp_chunk_ok:
+    mov [cs:.rp_dap_sectors], ax
+    mov [cs:.rp_dap_lba], edi
+    mov dword [cs:.rp_dap_lba+4], 0
+
+    push cx
+    push si
+    push ds
+    push cs
+    pop ds
+    mov si, .rp_dap
+    mov dl, [BIB_DRIVE]
+    mov ah, 0x43
+    xor al, al
+    sti
+    int 0x13
+    pop ds
+    pop si
+    pop cx
+    jc .rp_err_io                   ; Data write failed — old file untouched
+
+    movzx eax, word [cs:.rp_dap_sectors]
+    sub cx, ax
+    jz .rp_update_dir
+    add edi, eax
+    shl ax, 9
+    add [cs:.rp_dap_buf], ax
+    jnc .rp_write_loop
+    mov ax, [cs:.rp_dap_buf+2]
+    add ax, 0x1000
+    mov [cs:.rp_dap_buf+2], ax
+    jmp .rp_write_loop
+
+.rp_update_dir:
+    ; Atomically update the directory entry to point at the new data.
+    push cs
+    pop es
+    mov di, [cs:.rp_slot_di]
+
+    ; Was this a brand-new entry? If so, bump file count.
+    cmp word [cs:.rp_existing_di], 0
+    jne .rp_skip_count_inc
+    inc byte [cs:dir_cache + MNFS_HDR_COUNT]
+    inc byte [cs:cached_count]
+.rp_skip_count_inc:
+
+    ; Write filename (11 bytes from DS:caller_si → ES:di)
+    mov si, [cs:.rp_caller_si]
+    mov cx, MNFS_NAME_LEN
+.rp_copy_name:
+    mov al, [ds:si]
+    mov [es:di], al
+    inc si
+    inc di
+    dec cx
+    jnz .rp_copy_name
+
+    ; Attribute
+    mov al, [cs:.rp_attr]
+    mov [es:di], al
+    inc di
+
+    ; Start sector (4 bytes)
+    mov eax, [cs:.rp_start]
+    mov [es:di], eax
+    add di, 4
+
+    ; Size in sectors (2 bytes)
+    mov ax, [cs:.rp_sectors]
+    mov [es:di], ax
+    add di, 2
+
+    ; Size in bytes (4 bytes)
+    mov eax, [cs:.rp_size_bytes]
+    mov [es:di], eax
+    add di, 4
+
+    ; Reserved (10 bytes) — zero
+    xor al, al
+    mov cx, 10
+.rp_zero_reserved:
+    mov [es:di], al
+    inc di
+    dec cx
+    jnz .rp_zero_reserved
+
+    ; Recalculate header total_sectors (handles both replace + new cases,
+    ; including the leaked-old-extent case correctly).
+    call fs_recalc_total
+
+    ; --- Flush directory to disk -------------------------------------------
+    call fs_flush_dir
+    jc .rp_err_io_post
+
+    ; --- Success ------------------------------------------------------------
+    pop edx
+    pop ecx
+    pop ebx
+    pop si
+    pop edi
+    pop es
+    jmp fs_iret_cf_clear
+
+.rp_err_invalid:
+    mov al, FS_ERR_EXISTS
+    jmp .rp_fail
+.rp_err_protected:
+    mov al, FS_ERR_PROTECTED
+    jmp .rp_fail
+.rp_err_dir_full:
+    mov al, FS_ERR_DIR_FULL
+    jmp .rp_fail
+.rp_err_disk_full:
+    mov al, FS_ERR_DISK_FULL
+    jmp .rp_fail
+.rp_err_io:
+.rp_err_io_post:
+    mov al, FS_ERR_IO
+.rp_fail:
+    pop edx
+    pop ecx
+    pop ebx
+    pop si
+    pop edi
+    pop es
+    jmp fs_iret_cf_set
+
+; FS_REPLACE_FILE local data
+.rp_caller_si:   dw 0
+.rp_buf_off:     dw 0
+.rp_buf_seg:     dw 0
+.rp_size_bytes:  dd 0
+.rp_attr:        db 0
+.rp_sectors:     dw 0
+.rp_start:       dd 0
+.rp_slot_di:     dw 0
+.rp_existing_di: dw 0
+
+; Write DAP (16 bytes)
+.rp_dap:
+    db 0x10, 0
+.rp_dap_sectors: dw 0
+.rp_dap_buf:     dw 0, 0
+.rp_dap_lba:     dd 0, 0
 
 ; =============================================================================
 ; fs_flush_dir — Write the cached directory sector back to disk
@@ -1085,12 +1457,13 @@ fs_syscall_handler:
 ;
 ; Input:  none (uses dir_cache in CS)
 ; Output: CF clear = success, CF set = disk error
-; Clobbers: AX (preserved otherwise)
+; Preserves: all registers (full 32-bit width). Only CF may change.
+; Memory side effects: writes 1 sector to disk at MNFS_DIR_SECTOR (partition-rel).
 ; =============================================================================
 fs_flush_dir:
-    push ax
+    push eax
     push si
-    push dx
+    push edx
     push ds
 
     ; Set up DAP for directory write
@@ -1117,9 +1490,9 @@ fs_flush_dir:
     int 0x13
 
     pop ds
-    pop dx
+    pop edx
     pop si
-    pop ax
+    pop eax
     ret                             ; CF from INT 0x13 propagates
 
 .fd_dap:
@@ -1136,11 +1509,15 @@ fs_flush_dir:
 ;
 ; Input:  ES = CS (cache segment)
 ; Output: [dir_cache + MNFS_HDR_TOTAL] updated
-; Clobbers: AX, BX, CX, DI
+; Preserves: all registers (full 32-bit width). No flags defined.
+; Memory side effects: rewrites dir_cache header word at +MNFS_HDR_TOTAL.
 ; =============================================================================
 fs_recalc_total:
+    push eax
+    push ebx
+    push ecx
+    push edx
     push di
-    push cx
 
     mov di, dir_cache + MNFS_HDR_SIZE
     mov cx, MNFS_MAX_ENTRIES
@@ -1193,8 +1570,11 @@ fs_recalc_total:
 
     mov [cs:dir_cache + MNFS_HDR_TOTAL], bx
 
-    pop cx
     pop di
+    pop edx
+    pop ecx
+    pop ebx
+    pop eax
     ret
 
 ; =============================================================================
@@ -1236,11 +1616,18 @@ fs_iret_cf_clear:
 ; Set CF in handler FLAGS and return from interrupt
 fs_iret_cf_set:
 %ifdef DEBUG
+    mov [cs:fs_dbg_err_al], al
+    push ax
     push si
     mov si, fs_dbg_ret_err
     call serial_puts
+    mov si, fs_dbg_al_eq
+    call serial_puts
+    mov al, [cs:fs_dbg_err_al]
+    call serial_hex8
     call serial_crlf
     pop si
+    pop ax
     dec byte [cs:BIB_INT_DEPTH]        ; Track total INT nesting
 %endif
     stc
@@ -1249,7 +1636,9 @@ fs_iret_cf_set:
 
 %ifdef DEBUG
 fs_dbg_ret_ok:   db '[FS] -> OK', 0
-fs_dbg_ret_err:  db '[FS] -> ERR (CF=1)', 0
+fs_dbg_ret_err:  db '[FS] -> ERR', 0
+fs_dbg_al_eq:    db ' AL=', 0
+fs_dbg_err_al:   db 0
 fs_dbg_read_ok:  db '[FS] READ_SECTOR OK', 0
 fs_dbg_dap_pfx:  db '[FS] DAP: ', 0
 fs_dbg_disk_err: db '[FS] INT13 ERR AH=', 0

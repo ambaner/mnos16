@@ -281,6 +281,17 @@ $diskParams = @{
 if ($ProgramOut.Count -gt 0) {
     $diskParams['UserPrograms'] = $ProgramOut
 }
+
+# Bundle data files (e.g., .BAS demos) from the data/ directory.
+$DataDir = Join-Path $Root 'data'
+if (Test-Path $DataDir) {
+    $dataFiles = Get-ChildItem $DataDir -File | Where-Object {
+        $_.Extension -match '^\.(bas|txt)$'
+    } | ForEach-Object { $_.FullName }
+    if ($dataFiles.Count -gt 0) {
+        $diskParams['DataFiles'] = $dataFiles
+    }
+}
 & $DiskScript @diskParams
 
 # ---------- create VHD ------------------------------------------------------

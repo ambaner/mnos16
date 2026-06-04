@@ -169,6 +169,7 @@ syscall_handler:
 .sn_26: db 'GET_ARGV', 0
 .sn_27: db 'EXEC', 0
 .sn_28: db 'SPAWN', 0
+.sn_29: db 'PEEK_KEY', 0
 
 ; Name pointer table (indexed by AH, 0x00–0x1B)
 .sc_name_table:
@@ -213,6 +214,7 @@ syscall_handler:
     dw .sn_26       ; 0x26
     dw .sn_27       ; 0x27
     dw .sn_28       ; 0x28
+    dw .sn_29       ; 0x29
 %endif
 
 ; --- Syscall jump table (39 entries: 0x00–0x26, gap 0x1C–0x1F reserved) ------
@@ -258,6 +260,7 @@ syscall_handler:
     dw .fn_get_argv         ; 0x26 — SYS_GET_ARGV
     dw .fn_exec             ; 0x27 — SYS_EXEC
     dw .fn_spawn            ; 0x28 — SYS_SPAWN
+    dw .fn_peek_key         ; 0x29 — SYS_PEEK_KEY
 
 ; ─── SYS_PRINT_STRING (AH=0x01)──────────────────────────────────────────────
 ; Input:  DS:SI = pointer to null-terminated string
@@ -303,6 +306,35 @@ syscall_handler:
     xor ah, ah
     int 0x16                        ; BIOS keyboard: wait for keypress
     syscall_iret
+
+; ─── SYS_PEEK_KEY (AH=0x29) ──────────────────────────────────────────────────
+; Non-blocking key check via BIOS INT 0x16 AH=01h.  Does NOT consume the key.
+;
+; Input:  none
+; Output: AL = ASCII (0 if no key), AH = scancode (0 if no key),
+;         ZF = 1 if no key, ZF = 0 if a key is buffered.
+;
+; This handler must preserve ZF across the syscall return path.  The standard
+; syscall_iret would let IRET restore the caller's saved FLAGS (clobbering
+; our ZF), and syscall_ret_cf's `dec [BIB_INT_DEPTH]` in debug builds also
+; clobbers ZF.  We use a custom return that captures FLAGS before any
+; cleanup and restores them just before retf 2.
+; ──────────────────────────────────────────────────────────────────────────────
+.fn_peek_key:
+    mov ah, 0x01
+    int 0x16                        ; ZF=1 if no key, AX = scancode:ASCII otherwise
+    jnz .pk_have_key
+    xor ax, ax                      ; No key: clear AX, sets ZF=1
+.pk_have_key:
+    ; AX and ZF now correctly reflect the result.  Save FLAGS so debug
+    ; cleanup (which uses `dec`, clobbering ZF) cannot disturb them.
+    pushf
+%ifdef DEBUG
+    dec byte [cs:BIB_INT_DEPTH]
+%endif
+    popf                            ; restore our ZF/CF
+    sti                             ; sti modifies only IF, leaves ZF/CF intact
+    retf 2                          ; preserve current FLAGS (per syscall_ret_cf pattern)
 
 ; ─── SYS_READ_SECTOR (AH=0x04) ───────────────────────────────────────────────
 ; Input:  EDI = absolute LBA sector number

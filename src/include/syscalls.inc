@@ -73,4 +73,20 @@ SYS_SPAWN         equ 0x28          ; Like SYS_EXEC but reloads caller after chi
                                     ; DS:SI = child filename, DS:DI = child args,
                                     ; DS:BX = caller's 11-byte filename
 
-SYSCALL_MAX       equ 0x28          ; Highest valid syscall number
+; --- Non-blocking keyboard (0x29) --------------------------------------------
+; Used by user programs (e.g., BASIC's INKEY$ and Ctrl+C polling) to check
+; whether a key is buffered without blocking.  Backed by BIOS INT 0x16 AH=01h.
+;
+; IMPORTANT: This syscall does NOT consume the key from the BIOS buffer.
+; A subsequent SYS_READ_KEY is required to drain the key.
+;
+; Output:
+;   AL = ASCII (0 if no key waiting)
+;   AH = scancode (0 if no key waiting)
+;   ZF = 1 if no key waiting, ZF = 0 if a key is buffered
+;
+; The handler explicitly preserves ZF across the syscall return path; do not
+; replace with a generic dispatcher that clobbers FLAGS.
+SYS_PEEK_KEY      equ 0x29
+
+SYSCALL_MAX       equ 0x29          ; Highest valid syscall number

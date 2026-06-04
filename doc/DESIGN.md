@@ -475,7 +475,7 @@ but prints a warning.
 Displays static version and build information:
 
 ```
-  MNOS v0.9.15
+  MNOS v0.9.17
   Arch:      x86 real mode (16-bit)
   Assembler: NASM
   Platform:  Hyper-V Gen 1

@@ -307,9 +307,30 @@ into two interrupt vectors provides clean architectural layering:
 | 0x02| FS_FIND_FILE    | Find a file by 8.3 name              |
 | 0x03| FS_READ_FILE    | Read a file's contents into memory   |
 | 0x04| FS_GET_INFO     | Get filesystem metadata              |
-| 0x06| FS_WRITE_FILE   | Write/create a file on disk          |
-| 0x07| FS_DELETE_FILE   | Delete a file (tombstone)            |
+| 0x05| FS_FIND_BASE    | Find a file by base name (resolves extension) |
+| 0x06| FS_WRITE_FILE   | Create a new file (rejects duplicates) |
+| 0x07| FS_DELETE_FILE  | Delete a file (tombstone)            |
 | 0x08| FS_RENAME_FILE  | Rename a file                        |
+| 0x09| FS_REPLACE_FILE | Atomic create-or-replace             |
+
+#### ABI Contract (all INT 0x81 handlers)
+
+All FS syscalls obey a common register-preservation contract:
+
+* **Inputs** are documented per handler.
+* **Outputs**: `CF=0` means success; documented output registers carry results.
+  `CF=1` means error; `AL` carries an `FS_ERR_*` code where documented.
+* **Register preservation (full 32-bit width)**: all registers except those
+  explicitly listed as outputs (and `AL` on `CF=1`) are preserved across the
+  call. This includes the upper 16 bits of `EAX/EBX/ECX/EDX` when only the
+  low 16 bits are touched as inputs.
+* **FLAGS**: only `CF` is defined on return. All other flags are undefined.
+* **Memory side effects**: each handler's section below lists what it writes
+  (disk sectors, caller buffer, directory cache, etc.).
+
+This contract is enforced by the handlers via explicit `push`/`pop` pairs;
+internal helpers (`fs_flush_dir`, `fs_recalc_total`) also obey it so they
+can be called from handlers without leaking register state to the caller.
 
 ### 8.2 FS_LIST_FILES (AH=0x01)
 
@@ -387,10 +408,9 @@ The shell uses DX and BX to calculate and display used/free space statistics.
 
 ### 8.6 FS_WRITE_FILE (AH=0x06)
 
-Writes (creates or overwrites) a file on disk.  If the file already exists, it
-is overwritten in place (must fit in existing allocation) or an error is
-returned.  If it does not exist, a new directory entry is allocated and sectors
-are appended after the current high-water mark.
+Creates a **new** file on disk. Rejects duplicates with `FS_ERR_EXISTS` — to
+overwrite an existing file, use `FS_REPLACE_FILE` (AH=0x09) instead. Data is
+always appended after the current high-water mark.
 
 ```
 Input:
@@ -398,11 +418,12 @@ Input:
   DS:SI = pointer to 11-byte filename (8 name + 3 ext, space-padded, uppercase)
   ES:BX = pointer to file data
   ECX   = file size in bytes
+  DL    = attribute byte (0 for normal user files)
 
 Output:
   CF clear = success
   CF set   = error:
-    AL = error code (see §8.9)
+    AL = error code (see §8.10)
 ```
 
 The directory header's `total_sectors` field is updated to reflect the new
@@ -411,7 +432,7 @@ high-water mark after a successful write.
 ### 8.7 FS_DELETE_FILE (AH=0x07)
 
 Deletes a file by marking its directory entry as a tombstone.  The first byte
-of the filename is overwritten with `0xE5` (see §8.10 Tombstone Semantics).
+of the filename is overwritten with `0xE5` (see §8.11 Tombstone Semantics).
 System files (ATTR_SYSTEM) are protected and cannot be deleted.
 
 ```
@@ -422,7 +443,7 @@ Input:
 Output:
   CF clear = success
   CF set   = error:
-    AL = error code (see §8.9)
+    AL = error code (see §8.10)
 ```
 
 ### 8.8 FS_RENAME_FILE (AH=0x08)
@@ -439,10 +460,41 @@ Input:
 Output:
   CF clear = success
   CF set   = error:
-    AL = error code (see §8.9)
+    AL = error code (see §8.10)
 ```
 
-### 8.9 Error Codes
+### 8.9 FS_REPLACE_FILE (AH=0x09)
+
+Atomic **create-or-replace**.  Writes the new data to freshly allocated
+sectors first, then updates the directory entry in a single flush.  If the
+data write fails, the existing file is untouched.
+
+Internally this is what `mn_save_file` in `mnoslib.inc` wraps; user programs
+should prefer the helper over a hand-rolled delete-then-write sequence
+(the BASIC SAVE corruption bug fixed on 2026-06-04 was caused by exactly
+that pattern).
+
+```
+Input:
+  AH    = 0x09
+  DS:SI = pointer to 11-byte filename
+  ES:BX = pointer to file data
+  ECX   = file size in bytes
+  DL    = attribute byte
+
+Output:
+  CF clear = success (file either created or replaced)
+  CF set   = error:
+    AL = error code (FS_ERR_PROTECTED, FS_ERR_DIR_FULL,
+                     FS_ERR_DISK_FULL, FS_ERR_IO)
+```
+
+**Limitation**: when replacing, the old extent leaks (MNFS has no free list).
+This is acceptable for the OS's intended use; the disk fills linearly with
+each replace until compaction is needed.  System files (ATTR_SYSTEM) cannot
+be replaced.
+
+### 8.10 Error Codes
 
 When a write operation fails (CF=1), AL contains one of these error codes:
 
@@ -455,7 +507,7 @@ When a write operation fails (CF=1), AL contains one of these error codes:
 | 5    | FS_ERR_IO         | Disk I/O error during read or write        |
 | 6    | FS_ERR_PROTECTED  | File is system-protected (ATTR_SYSTEM)     |
 
-### 8.10 Tombstone Semantics
+### 8.11 Tombstone Semantics
 
 Deleted files use a **tombstone** marker rather than compacting the directory:
 
@@ -469,7 +521,7 @@ Deleted files use a **tombstone** marker rather than compacting the directory:
   `start_sector + size_sectors` of any live entry) — it does not shrink to
   fill gaps left by deleted files because MNFS uses contiguous allocation.
 
-### 8.11 Disk Space Management
+### 8.12 Disk Space Management
 
 MNFS uses a simple contiguous allocation model with high-water-mark tracking:
 

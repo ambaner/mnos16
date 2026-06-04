@@ -1093,14 +1093,23 @@ convention and mechanism change, but the **function numbers stay the same**:
 - **Rollback on failure:** If the child file cannot be loaded (pre-load error), `spawn_rollback_if_pending` undoes the depth increment and trampoline so the caller can continue.
 - **Use case:** MNMON's `x` command — launches a program, then MNMON is reloaded when the program finishes.
 
-**Filesystem write syscalls (INT 0x81, AH=0x06–0x08):** Implemented in v0.9.11.
-These extend the filesystem module with write support — creating, deleting, and
-renaming files at runtime.  All use `syscall_ret_cf` for CF propagation.  Error
-codes returned in AL when CF=1 (see `doc/FILESYSTEM.md` §8.9).
+**Filesystem write syscalls (INT 0x81, AH=0x06–0x09):** Implemented in v0.9.11
+(0x06–0x08) and v0.9.17 (0x09). These extend the filesystem module with write
+support — creating, deleting, renaming, and atomically replacing files at
+runtime.  All use `syscall_ret_cf` for CF propagation.  Error codes returned in
+AL when CF=1 (see `doc/FILESYSTEM.md` §8.10).  All FS handlers obey the **FS ABI
+Contract v1** documented at the top of `src/fs/fs.asm` and in `doc/FILESYSTEM.md`
+§8.1: full 32-bit register preservation except documented outputs.
 
-| 0x06 | `FS_WRITE_FILE` | Write/create file | DS:SI=name, ES:BX=data, ECX=size; CF+AL on error | INT 0x81 |
-| 0x07 | `FS_DELETE_FILE` | Delete file (tombstone) | DS:SI=name; CF+AL on error | INT 0x81 |
-| 0x08 | `FS_RENAME_FILE` | Rename file | DS:SI=old, ES:DI=new; CF+AL on error | INT 0x81 |
+| 0x06 | `FS_WRITE_FILE`   | Create new file (fails on duplicate)            | DS:SI=name, ES:BX=data, ECX=size, DL=attr; CF+AL on error | INT 0x81 |
+| 0x07 | `FS_DELETE_FILE`  | Delete file (tombstone)                         | DS:SI=name; CF+AL on error                                | INT 0x81 |
+| 0x08 | `FS_RENAME_FILE`  | Rename file                                     | DS:SI=old, ES:DI=new; CF+AL on error                      | INT 0x81 |
+| 0x09 | `FS_REPLACE_FILE` | Atomic create-or-replace (data-first, then dir) | DS:SI=name, ES:BX=data, ECX=size, DL=attr; CF+AL on error | INT 0x81 |
+
+User-mode programs should prefer the `mn_save_file` / `mn_load_file` helpers in
+`src/include/mnoslib.inc` over hand-rolled syscall sequences — they wrap
+FS_REPLACE_FILE / FS_READ_FILE with stable names and provide the contract
+documentation in one place.
 
 ### 7.3 Stability Guarantee
 

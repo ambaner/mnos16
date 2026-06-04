@@ -1,7 +1,7 @@
 # MNOS16
 
 A minimalistic 16-bit operating system built from scratch in x86 assembly —
-currently at **v0.9.15**.  Features a multi-stage boot loader, a
+currently at **v0.9.17**.  Features a multi-stage boot loader, a
 microkernel-style architecture with separate relocatable modules for filesystem
 and memory management, and an interactive shell that can load and run user
 programs.  Targets Hyper-V Gen 1 VMs with a unified VHD containing both Release
@@ -91,7 +91,7 @@ VHD — no need to rebuild or swap images.
 After the boot chain completes, you'll see the shell:
 
 ```
-  MNOS v0.9.15 [Release]
+  MNOS v0.9.17 [Release]
 
 mnos:\>
 ```
@@ -112,7 +112,16 @@ Type `help` for a list of commands:
 
 Any unrecognized command is treated as a program name — e.g., typing `edit`
 runs `EDIT.MNX`, typing `sysinfo` runs `SYSINFO.MNX`, typing `mnmon` runs
-`MNMON.MNX`.  The `.MNX` extension is optional.
+`MNMON.MNX`, typing `basic` runs `BASIC.MNX`.  The `.MNX` extension is optional.
+
+Bundled user programs:
+
+| Program        | Description |
+|----------------|-------------|
+| `EDIT.MNX`     | Full-screen text editor (gap buffer, find/replace, atomic save) |
+| `BASIC.MNX`    | Line-numbered BASIC interpreter (PRINT/INPUT/FOR/GOSUB/LOAD/SAVE/FILES) |
+| `MNMON.MNX`    | Machine monitor (db/dw/eb/ew/x/g, DOS-DEBUG-style) |
+| `SYSINFO.MNX`  | System info — kernel/shell/memory/disk diagnostics |
 
 ```powershell
 Start-VM -Name 'MNOS16'           # start the VM
@@ -132,6 +141,7 @@ mini-os/
 │   ├── ABI.md                # Application Binary Interface contract (portability guarantee)
 │   ├── DESIGN.md             # Architecture & design document
 │   ├── DEBUGGING.md          # Debug infrastructure (serial, asserts, faults, canary)
+│   ├── BASIC.md             # BASIC.MNX interpreter reference (language, commands, internals)
 │   ├── EDITOR.md             # EDIT.MNX text editor design (gap buffer, dialogs, search)
 │   ├── LOADER.md             # Stage-2 loader design (A20, boot menu)
 │   ├── FILESYSTEM.md         # MNFS specification & FS.SYS architecture
@@ -155,6 +165,7 @@ mini-os/
 │   │   ├── load_binary.inc    # Shared MNEX binary loader subroutine
 │   │   ├── memory.inc         # Component load addresses, stack canary, MM constants
 │   │   ├── mnfs.inc           # MNFS filesystem constants & INT 0x81 numbers
+│   │   ├── mnoslib.inc        # User-mode helper library (mn_save_file, mn_load_file)
 │   │   ├── serial.inc         # COM1 serial I/O (debug build only)
 │   │   ├── syscalls.inc       # INT 0x80 syscall function numbers
 │   │   └── version.inc        # Single source of truth for OS version
@@ -190,6 +201,17 @@ mini-os/
 │   │   │   ├── edit_exit.inc  #   Exit handler
 │   │   │   ├── edit_msg.inc   #   Status messages
 │   │   │   └── edit_data.inc  #   State variables, strings, help text
+│   │   ├── basic/             # BASIC.MNX — line-numbered BASIC interpreter
+│   │   │   ├── basic.asm      #   Entry point, REPL loop, MNEX header
+│   │   │   ├── basic_data.inc #   Fixed-address layout, error codes, constants
+│   │   │   ├── basic_tokens.inc   # Keyword/function/operator token IDs
+│   │   │   ├── basic_lex.inc  #   Tokenizer + detokenizer
+│   │   │   ├── basic_err.inc  #   Central error trampoline (ERR/ERL)
+│   │   │   ├── basic_edit.inc #   Readline + program-line list ops
+│   │   │   ├── basic_load.inc #   LOAD / SAVE / FILES helpers
+│   │   │   ├── basic_var.inc  #   Variable storage (A-Z, A$-Z$, arrays)
+│   │   │   ├── basic_expr.inc #   Pratt-style expression evaluator
+│   │   │   └── basic_stmt.inc #   Statement dispatcher + handler set
 │   │   ├── sysinfo/           # SYSINFO.MNX — system information (5 pages)
 │   │   │   ├── sysinfo.asm    #   Entry point, MNEX header (6 sectors)
 │   │   │   ├── sysinfo_code.inc   # Display logic (CPU, memory, BDA, disk, IVT)
@@ -226,6 +248,7 @@ mini-os/
 │       ├── shell.sys          # SHELL — release, relocatable (13 sectors)
 │       ├── mm.sys             # MM — release, relocatable (2 sectors)
 │       ├── edit.mnx            # EDIT — text editor (13 sectors)
+│       ├── basic.mnx           # BASIC — interpreter (~20 sectors)
 │       ├── sysinfo.mnx        # SYSINFO — system info (6 sectors)
 │       ├── mnmon.mnx          # MNMON — machine monitor (5 sectors)
 │       ├── fsd.sys            # FS — debug (8 sectors)
@@ -403,6 +426,8 @@ Each version is a tagged release you can checkout to see the project at that sta
 | `v0.9.13` | **Sysinfo Extraction + Layout Tightening** | `sysinfo` extracted from shell into standalone SYSINFO.MNX (6 sectors); shell shrunk 19→13 sectors; kernel relocated 0x5800→0x5000; stack doubled 2→4 KB; 16 memory-layout consistency tests; 176 total tests |
 | `v0.9.14` | **Relocatable Modules + ABI Contract** | All binaries (system modules FS/MM/SHELL AND user programs .MNX) now assembled with ORG 0 and relocated at load time via MNEX v2 headers; gen_relocs.py + pack_module.py toolchain; kernel apply_relocs for modules, shell apply_relocs for programs; dynamic module placement; formal ABI contract (doc/ABI.md); full binary portability; 35 relocation unit tests; 213 total tests |
 | `v0.9.15` | **SYS_EXEC + SYS_SPAWN** | Overlay exec (AH=0x27) replaces running program; SYS_SPAWN (AH=0x28) with nested parent reload (4-level stack); trampoline-based shell return; spawn rollback on failure; MNMON `x` command; 234 total tests |
+| `v0.9.16` | **Nested spawn fixes** | Fixed `#UD` crash on multi-level SYS_SPAWN; nested spawns reuse outermost trampoline; spawn rollback on pre-load failure; trampoline re-install after nested unwind |
+| `v0.9.17` | **BASIC + FS API hardening** | BASIC.MNX interactive interpreter (PRINT/INPUT/FOR/GOSUB/LOAD/SAVE/FILES); new FS_REPLACE_FILE atomic syscall (AH=0x09); mnoslib.inc user-mode helpers (mn_save_file, mn_load_file); FS ABI contract v1 (full 32-bit register preservation); EDIT + BASIC migrated to atomic save; doc/BASIC.md; 254 total tests |
 
 ```cmd
 git checkout v0.1.0      # see the project at any prior milestone

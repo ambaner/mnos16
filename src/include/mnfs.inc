@@ -84,8 +84,11 @@ FS_FIND_BASE      equ 0x05           ; DS:SI=8-byte name → EAX=start, CX=secto
 FS_WRITE_FILE     equ 0x06           ; DS:SI=name, ES:BX=buf, ECX=bytes, DL=attr
 FS_DELETE_FILE    equ 0x07           ; DS:SI=name → CF=error
 FS_RENAME_FILE    equ 0x08           ; DS:SI=old name, ES:DI=new name
+FS_REPLACE_FILE   equ 0x09           ; DS:SI=name, ES:BX=buf, ECX=bytes, DL=attr
+                                     ;   Atomic create-or-replace; old sectors
+                                     ;   leak (acceptable in append-only MNFS).
 
-FS_SYSCALL_MAX    equ 0x08           ; Highest valid FS syscall number
+FS_SYSCALL_MAX    equ 0x09           ; Highest valid FS syscall number
 
 ; --- Filesystem error codes (returned in AL when CF is set) ------------------
 FS_ERR_NOT_FOUND  equ 0x01           ; File not found

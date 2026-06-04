@@ -6,6 +6,129 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.9.17] - 2026-06-04
+
+### Added
+- **BASIC interpreter (`BASIC.MNX`)** — interactive line-numbered BASIC à la
+  GW-BASIC, runnable from the shell with `basic` (REPL) or `basic FOO.BAS`
+  (load + REPL).  Supports `PRINT`, `INPUT`, `LET`, `IF…THEN`, `FOR…NEXT`,
+  `GOTO`, `GOSUB…RETURN`, `END`, `STOP`, `REM`, `CLS`, `RUN`, `LIST`, `NEW`,
+  `LOAD`, `SAVE`, `FILES`, `HELP`, `SYSTEM`.  16-bit integer variables A-Z,
+  string variables `A$-Z$`, arrays, FOR/NEXT loop nesting up to 8 deep,
+  GOSUB stack 16 deep, central error trampoline with `ERR/ERL`.  Modules
+  in `src/programs/basic/basic_*.inc`.  Pre-seeded `HELLO.BAS` and
+  `GUESS.BAS` on the disk image.
+- **`FS_REPLACE_FILE` syscall (INT 0x81 AH=0x09)** — atomic create-or-replace.
+  Writes data to freshly-allocated sectors first, then updates the directory
+  entry in a single flush.  If the data write fails, the existing file is
+  untouched.  Refuses to replace files with `ATTR_SYSTEM`.  Old extent leaks
+  on replace (acceptable in MNFS's append-only model).  Eliminates the
+  delete-then-write footgun that caused the v0.9.16 BASIC SAVE corruption.
+- **`mnoslib.inc` — user-mode helper library.**  Header-only library
+  (`%include "mnoslib.inc"` in user programs) wrapping common FS syscalls
+  with stable, documented names: `mn_save_file` (wraps `FS_REPLACE_FILE`)
+  and `mn_load_file` (wraps `FS_READ_FILE`).  Include guard prevents double
+  inclusion.  Must be included AFTER the program's `entry:` label (it emits
+  real code that must not be reachable by fall-through from the loader's
+  jump target).
+- **FS ABI Contract v1** documented at the top of `src/fs/fs.asm` and in
+  `doc/FILESYSTEM.md` §8.1.  Codifies that all INT 0x81 handlers preserve
+  full 32-bit register width (push/pop `EAX/EBX/ECX/EDX`, not their 16-bit
+  halves) except for documented outputs and `AL` on `CF=1`; that only `CF`
+  is defined in FLAGS on return; and that each handler's memory side
+  effects are listed in its docstring.
+- **Per-handler clobber docstrings** rewritten for every FS handler
+  (`FS_LIST_FILES` through `FS_REPLACE_FILE`) plus internal helpers
+  (`fs_flush_dir`, `fs_recalc_total`).
+- **AL printout in `fs_iret_cf_set`** debug path — `[FS] -> ERR AL=NN`
+  makes it possible to distinguish DIR_FULL from DISK_FULL from IO from
+  PROTECTED at a glance in serial logs.
+
+### Changed
+- **EDIT migrated to `mn_save_file`** — `ed_save_file` in
+  `src/programs/edit/edit_file.inc` no longer does delete-then-write; it
+  calls the atomic helper.  Sets `ES = DS` defensively before the call.
+- **BASIC's `bas_save_file` migrated to `mn_save_file`** — same atomic save.
+- **`FS_FIND_FILE` now adds `push si`/`pop si`** (was previously letting the
+  caller's SI be clobbered along the not-found path).
+- **`FS_FIND_BASE` preserves SI** in both match and not-found paths; its
+  documented memory side effect (writes 3 extension bytes to the caller's
+  buffer) is now spelled out.
+- **`FS_READ_FILE`** saves caller SI to a local memory slot and restores it
+  on all three exit paths; wraps `INT 0x13` with `push ds; push cs; pop ds;
+  …; pop ds` to be DS-safe (was previously assuming caller's DS=0).
+- **`FS_WRITE_FILE`, `FS_DELETE_FILE`, `FS_RENAME_FILE`** push/pop changed
+  from 16-bit (`bx`, `cx`, `dx`, `di`) to 32-bit (`ebx`, `ecx`, `edx`,
+  `edi`) — preserves the upper 16 bits of caller registers.
+- **`fs_flush_dir`** internal helper preserves `EAX/EDX` (was only `AX/DX`).
+- **`fs_recalc_total`** preserves `EAX/EBX/ECX/EDX/DI` (was only `DI/CX`).
+- **Dispatcher** uses `cmp bx, FS_SYSCALL_MAX` instead of a hardcoded `8`
+  for the debug trace range check.  `FS_SYSCALL_MAX` bumped to `0x09`.
+- **BASIC `FILES` command** filters to `.BAS` files only (per request from
+  the BASIC-interpreter user feedback).
+- **BASIC startup banner** trimmed — removed the "(C) 2026 ..." line; the
+  shorter `MNOS16 BASIC 1.0\n(C) 2025 BASIC for MNOS16 ...` was overkill.
+- **BASIC `LOAD`/`SAVE`** accept quoted filenames (`load "hello.bas"`).
+
+### Fixed
+- **BASIC SAVE corruption** (v0.9.16-era footgun): `bas_save_file` kept
+  the byte count in DX across `FS_DELETE_FILE`, which silently clobbered
+  DX inside `fs_recalc_total` (via `movzx edx, word [es:di + MNFS_ENT_SECTORS]`).
+  Result: the subsequent `FS_WRITE_FILE` wrote only 1 byte and SAVE on an
+  existing file truncated it to a single byte.  Fix is twofold:
+  (a) `fs_recalc_total` and `FS_DELETE_FILE` now preserve full 32-bit width
+  of every non-output register; (b) the entire delete-then-write pattern
+  was replaced with `FS_REPLACE_FILE` / `mn_save_file`, eliminating the
+  hazard structurally.
+- **BASIC `LOAD` triple-fault** on missing file — `bas_load_file` now
+  uses the central `bas_error` trampoline so a missing file goes through
+  the REPL recovery path rather than `iret`-ing from a stack mismatch.
+- **BASIC `FOR` TYPE error** with simple integer counters — `for_pi_*`
+  state slots were reading uninitialised memory on first iteration.
+- **mnoslib placement** — initial integration placed
+  `%include "mnoslib.inc"` BEFORE the program's `entry:` label.  The
+  resulting binary started with `mov ah, FS_REPLACE_FILE; int 0x81` and
+  the loader jumped straight into REPLACE_FILE with garbage arguments.
+  Both `basic.asm` and `edit.asm` now include `mnoslib.inc` alongside
+  the other code-bearing `.inc` modules at the bottom of the file.
+- **`FS_READ_FILE` DAP DS** — INT 0x13's DAP pointer was previously
+  read with the caller's DS, which only worked because the OS happens
+  to run with `DS=0` most of the time.  Now wrapped with
+  `push ds; push cs; pop ds; …; pop ds` for safety.
+
+### Documentation
+- `doc/FILESYSTEM.md` — updated function table for AH=0x05 (`FS_FIND_BASE`)
+  and AH=0x09 (`FS_REPLACE_FILE`); added §8.1 FS ABI Contract subsection;
+  rewrote §8.6 `FS_WRITE_FILE` ("creates new, rejects duplicates"); added
+  §8.9 `FS_REPLACE_FILE` section; renumbered §8.10 Error Codes and §8.11
+  Tombstone Semantics; fixed all cross-references.
+- `doc/SYSTEM-CALLS.md` §7.x — FS write-syscall table extended with
+  `FS_REPLACE_FILE`; added pointer to `mnoslib.inc` helpers.
+- New: `doc/BASIC.md` — full reference for the BASIC interpreter
+  (language, syntax, commands, examples, internals).
+- `doc/EDITOR.md` — Save section updated to reference atomic save via
+  `mn_save_file`.
+
+---
+
+## [0.9.16] - 2026-06-02
+
+### Added
+- Nested `SYS_SPAWN` support up to 4 levels deep via
+  `spawn_parent_stack` (depth-indexed); MNMON can now spawn itself.
+
+### Fixed
+- Nested `SYS_SPAWN` crash (`#UD Invalid Opcode`) — each nested spawn
+  overwrote `spawn_saved_ret` with the trampoline address instead of
+  preserving the original shell return.  The outermost spawn now installs
+  the trampoline exactly once; nested spawns skip trampoline setup.
+- `SYS_SPAWN` failure left spawn depth and trampoline committed even when
+  the child failed to load; added `spawn_rollback_if_pending`.
+- Trampoline not re-installed after nested unwind back to a still-spawned
+  parent.
+
+---
+
 ## [0.9.15] - 2026-05-28
 
 ### Added

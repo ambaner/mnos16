@@ -52,7 +52,7 @@ or data in real mode — they are memory-mapped hardware regions.
 
 ---
 
-## 2. MNOS16 Memory Map (v0.9.15)
+## 2. MNOS16 Memory Map (v0.9.17)
 
 MNOS16 uses the lower portion of conventional memory (0x0500–0xF7FF).  The
 layout was designed around four constraints:
@@ -195,7 +195,7 @@ The loader loads KERNEL.SYS to linear address 0x5000 (segment 0x0000, offset
 system binary that retains a hardcoded ORG, because the loader that places it
 is too simple to perform relocation.
 
-**Contents** (v0.9.15): INT 0x80 IVT installation, 27+ syscall handlers
+**Contents** (v0.9.17): INT 0x80 IVT installation, 27+ syscall handlers
 (including SYS_EXEC, SYS_SPAWN, SYS_EXIT), module loading with dynamic
 placement and `apply_relocs` subroutine, version info, `next_base` tracking
 for sequential module placement, spawn/exit state management.
@@ -570,7 +570,7 @@ prevents a larger loader from colliding with the shell.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│            MNOS16 v0.9.15 Memory Quick Reference             │
+│            MNOS16 v0.9.17 Memory Quick Reference             │
 ├──────────┬──────────┬─────────────────────────┬──────────────┤
 │ Start    │ End      │ Contents                │ Size         │
 ├──────────┼──────────┼─────────────────────────┼──────────────┤

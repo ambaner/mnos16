@@ -211,7 +211,7 @@ ed_load_file_from_name:
 ed_save_file:
     ; Flatten gap buffer: we need contiguous data
     ; Text is in two parts: [GAP_BUF_START..gap_start) and [gap_end..GAP_BUF_END+1)
-    ; For FS_WRITE_FILE we need:
+    ; For mn_save_file we need:
     ;   SI = filename (8.3 format)
     ;   ES:BX = data buffer
     ;   ECX = file size in bytes
@@ -224,19 +224,14 @@ ed_save_file:
     ; Move gap to end of text
     call ed_gap_move_to             ; AX = offset to move to (= text length)
 
-    ; Delete existing file first (FS_WRITE_FILE rejects duplicates)
-    mov si, filename
-    mov ah, FS_DELETE_FILE
-    int 0x81
-    ; Ignore error (file may not exist yet — new file)
-
     pop ax                          ; AX = file size
     movzx ecx, ax                   ; ECX = file size (zero-extended to 32-bit)
     mov si, filename
-    mov bx, GAP_BUF_START           ; Data buffer
+    mov bx, GAP_BUF_START           ; Data buffer (ES already = DS for user prog)
+    push ds
+    pop  es
     xor dl, dl                      ; No special attributes
-    mov ah, FS_WRITE_FILE
-    int 0x81
+    call mn_save_file               ; Atomic create-or-replace
     jc .save_fail
 
     mov byte [modified], 0

@@ -237,9 +237,16 @@ arrow-key selection and Enter to confirm.
 
 `ed_save_file` (edit_file.inc):
 1. Compacts the gap buffer (moves gap to end) so text is contiguous
-2. Calls `FS_WRITE_FILE` (INT 0x81, AH=0x06) with buffer at `GAP_BUF_START`
-   and size = text length
+2. Calls `mn_save_file` (`src/include/mnoslib.inc`) with buffer at
+   `GAP_BUF_START` and size = text length.  `mn_save_file` wraps
+   `FS_REPLACE_FILE` (INT 0x81, AH=0x09), which atomically writes the
+   new data to fresh sectors and then flips the directory entry — if
+   the data write fails, the existing file is untouched.
 3. Clears modified flag on success
+
+Prior to v0.9.17 this used a `FS_DELETE_FILE` → `FS_WRITE_FILE` sequence;
+the move to the single atomic syscall eliminates the window in which a
+crash between the delete and the write would leave no file on disk.
 
 ---
 
