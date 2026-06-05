@@ -232,6 +232,17 @@ Build-RelocModule -Name 'MMD'     -AsmPath $MmAsm     -BinPath $MmDbgBin     -Ma
 Write-Step '--- User programs ---'
 $ProgramsDir = Join-Path $Root 'src\programs'
 $ProgramOut  = @()
+
+# Clear any stale .mnx files from previous builds before we rebuild — without
+# this, orphans (e.g. a source that has since been added to $SkipPrograms, or
+# renamed) linger in build/boot/ and confuse the test suite.  The actual
+# disk-image pack uses the explicit $ProgramOut list below, so orphans never
+# made it into the VHD, but the test_mnx_size_budgets.py bijection check sees
+# them and rightly flags the unaccounted file.  A short-circuit clean here
+# is cheaper and clearer than burdening every test with orphan-detection.
+Get-ChildItem $BuildDir -Filter '*.mnx' -ErrorAction SilentlyContinue |
+    Remove-Item -Force
+
 if (Test-Path $ProgramsDir) {
     # Programs to skip (source kept as a "how to write a simple MNOS
     # program" example, but NOT built into a .mnx or packaged into the VHD).

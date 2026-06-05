@@ -220,6 +220,12 @@ jobs:
     - name: Generate test constants from .inc files
       run: python tests/gen_constants.py
 
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: MNOS16-build
+        path: build/boot/
+
     - name: Fetch coverage history
       if: github.ref == 'refs/heads/main'
       continue-on-error: true
