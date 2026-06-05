@@ -6,6 +6,94 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.9.18] - 2026-06-04
+
+### Added
+- **Full-coverage `mnoslib` helper library.**  Split the previous single-file
+  `mnoslib.inc` into four category headers under an umbrella include:
+  - `mnoslib_io.inc` — 11 wrappers for INT 0x80 console / keyboard syscalls
+    (`mn_print_string`, `mn_print_char`, `mn_print_hex8/16`, `mn_print_dec16`,
+    `mn_read_key`, `mn_peek_key`, `mn_wait_key`, `mn_clear_screen`,
+    `mn_set_cursor`, `mn_get_cursor`).
+  - `mnoslib_sys.inc` — 26 wrappers for INT 0x80 system, process, and debug
+    syscalls (`mn_get_version`, `mn_get_bib`, BDA/equip/video/A20/E820/CPUID/
+    EDD/IVT queries, `mn_reboot`, `mn_exit`, `mn_get_args`/`get_argc`/
+    `get_argv`, `mn_exec`, `mn_spawn`, `mn_read_sector`, `mn_dbg_print/
+    hex16/regs`).
+  - `mnoslib_fs.inc` — 9 wrappers for INT 0x81 filesystem syscalls
+    (`mn_list_files`, `mn_find_file`, `mn_find_base`, `mn_read_file`,
+    `mn_get_fs_info`, `mn_write_file`, `mn_delete_file`, `mn_rename_file`,
+    `mn_replace_file`).  The v0.9.17 names `mn_save_file` / `mn_load_file`
+    remain available as `equ` aliases for compatibility.
+  - `mnoslib_mm.inc` — 5 wrappers for INT 0x82 memory manager syscalls
+    (`mn_alloc`, `mn_free`, `mn_avail`, `mn_mem_info`, `mn_mem_query`).
+  - `mnoslib.inc` is now a thin umbrella that `%include`s all four; programs
+    that want a smaller footprint can include only the categories they need.
+- **`doc/MNOSLIB.md`** — full catalog and usage guide for the helper library,
+  including the placement rule (always `%include` AFTER `entry:`) and the
+  rationale for keeping wrappers pure 1:1 with no convenience helpers
+  (relocation pipeline simplicity).
+
+### Changed
+- **EDIT, BASIC, SYSINFO, MNMON, and the core of SHELL migrated to mnoslib.**
+  Refactored ~334 raw `int 0x80/0x81/0x82` call sites to use named
+  `call mn_*` helpers: `src/programs/edit/` (all .inc files including the
+  `%ifdef EDIT_DEBUG` debug-trace blocks in `edit_find.inc`, ~26 sites),
+  `src/programs/basic/` (all .inc files including the `%ifdef BASIC_DEBUG`
+  trace blocks in `basic_load.inc`, ~23 sites), `src/programs/sysinfo/`
+  (~169 sites), `src/programs/mnmon.asm` (~97 sites), and
+  `src/shell/{shell.asm, shell_readline.inc, shell_cmd_simple.inc}`
+  (~19 sites).  **All shipped user-mode `.MNX` programs are now 100%
+  mnoslib-clean** — zero raw `int 0x8N` sites and zero raw BIOS interrupts
+  remain in `src/programs/`, both in release and debug-trace builds.  The
+  remaining SHELL command files (`shell_cmd_sysinfo.inc`,
+  `shell_cmd_mem.inc`, `shell_cmd_dir.inc`, `shell_cmd_fs.inc`,
+  `shell_cmd_run.inc`) still use raw syscalls; migration is mechanical and
+  can happen incrementally.  Wrappers are purely additive — raw `int 0x80`
+  continues to work unchanged.
+- **BASIC's last two raw BIOS calls eliminated.**  `bas_stmt_cls` and
+  `bas_stmt_locate` in `src/programs/basic/basic_stmt.inc` were the only
+  sites in the entire apps + shell tree still calling `INT 0x10 AH=02h`
+  (BIOS Set Cursor) directly, bypassing the kernel.  They now route through
+  `mn_clear_screen` and `mn_set_cursor` respectively, so every user-mode
+  hardware interaction in MNOS16 now goes through the kernel's syscall
+  layer.  A grep for `int 0x1[0-9a-fA-F]` across `src/programs/` and
+  `src/shell/` now returns zero matches.
+- BASIC.MNX briefly grew to 22 sectors when the mnoslib umbrella was first
+  included, then returned to 21 sectors once the `%ifdef BASIC_DEBUG` trace
+  blocks in `basic_load.inc` were collapsed into `call mn_dbg_*` (each site
+  shrinks by ~2 bytes vs. the inline `mov ah, SYS_DBG_* / int 0x80`).  Final
+  MNX sizes vs. v0.9.17: EDIT.MNX 15 sectors (unchanged), BASIC.MNX 21
+  sectors (unchanged), SYSINFO.MNX 7 sectors (unchanged), MNMON.MNX 6
+  sectors (unchanged), SHELL.SYS unchanged.
+
+### Added (tests)
+- **Six new structural / regression tests under `tests/`** that guard the
+  v0.9.18 mnoslib invariants against silent drift, raising the suite from
+  254 to 277 passing tests:
+  - `test_no_raw_bios_in_userland.py` — no `int 0x1[0-9a-fA-F]` anywhere
+    in `src/programs/` or `src/shell/`.
+  - `test_migrated_programs_use_wrappers.py` — EDIT / BASIC / SYSINFO /
+    MNMON contain zero raw `int 0x8[012]` sites.
+  - `test_mnoslib_wrapper_shape.py` — every `mn_*:` body is exactly
+    `mov ah, CONST / int 0xN / ret` and the constant prefix matches the
+    interrupt vector (`SYS_→0x80`, `FS_→0x81`, `MEM_→0x82`).
+  - `test_mnoslib_syscall_coverage.py` — bijection between syscall
+    constants in the headers and `mn_*` wrapper labels (no missing
+    wrappers, no dangling wrappers, all `equ` aliases resolve).
+  - `test_mnoslib_include_order.py` — `%include "mnoslib.inc"` always
+    appears AFTER the program's first label.
+  - `test_mnx_size_budgets.py` — every shipped `.MNX` stays within its
+    per-binary sector budget and the global 60-sector TPA ceiling.
+
+### Documentation
+- New `doc/MNOSLIB.md` (described above), now also describing the six
+  regression tests above in §6.
+- README.md: bumped version banner to v0.9.18 and added MNOSLIB.md to the
+  doc table.
+
+---
+
 ## [0.9.17] - 2026-06-04
 
 ### Added

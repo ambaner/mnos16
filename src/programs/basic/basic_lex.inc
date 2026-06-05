@@ -846,8 +846,7 @@ bas_lex_putc:
     push bx
     push cx
     push dx
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
     pop dx
     pop cx
     pop bx

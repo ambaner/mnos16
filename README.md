@@ -1,7 +1,7 @@
 # MNOS16
 
 A minimalistic 16-bit operating system built from scratch in x86 assembly —
-currently at **v0.9.17**.  Features a multi-stage boot loader, a
+currently at **v0.9.18**.  Features a multi-stage boot loader, a
 microkernel-style architecture with separate relocatable modules for filesystem
 and memory management, and an interactive shell that can load and run user
 programs.  Targets Hyper-V Gen 1 VMs with a unified VHD containing both Release
@@ -91,7 +91,7 @@ VHD — no need to rebuild or swap images.
 After the boot chain completes, you'll see the shell:
 
 ```
-  MNOS v0.9.17 [Release]
+  MNOS v0.9.18 [Release]
 
 mnos:\>
 ```
@@ -142,6 +142,7 @@ mini-os/
 │   ├── DESIGN.md             # Architecture & design document
 │   ├── DEBUGGING.md          # Debug infrastructure (serial, asserts, faults, canary)
 │   ├── BASIC.md             # BASIC.MNX interpreter reference (language, commands, internals)
+│   ├── MNOSLIB.md           # User-mode helper library catalog (mn_* wrappers)
 │   ├── EDITOR.md             # EDIT.MNX text editor design (gap buffer, dialogs, search)
 │   ├── LOADER.md             # Stage-2 loader design (A20, boot menu)
 │   ├── FILESYSTEM.md         # MNFS specification & FS.SYS architecture
@@ -155,7 +156,7 @@ mini-os/
 │   ├── PROGRAM-LOADER.md     # Program loader design — implicit execution, TPA, .MNX format
 │   ├── SYSINFO.md            # SYSINFO.MNX — system information utility (5 pages)
 │   ├── SYSTEM-CALLS.md       # User↔kernel boundary, IVT/IDT/SYSCALL mechanisms
-│   └── TESTING.md            # Unit test framework design (3-tier strategy)
+│   └── TESTING.md            # Unit test framework design (4-tier strategy: Tier 0 + Tier 1 implemented)
 ├── src/
 │   ├── include/               # Shared constants & subroutines (%include)
 │   │   ├── bib.inc            # Boot Info Block field addresses
@@ -165,7 +166,11 @@ mini-os/
 │   │   ├── load_binary.inc    # Shared MNEX binary loader subroutine
 │   │   ├── memory.inc         # Component load addresses, stack canary, MM constants
 │   │   ├── mnfs.inc           # MNFS filesystem constants & INT 0x81 numbers
-│   │   ├── mnoslib.inc        # User-mode helper library (mn_save_file, mn_load_file)
+│   │   ├── mnoslib.inc        # User-mode helper library umbrella (%includes the four below)
+│   │   ├── mnoslib_io.inc     # INT 0x80 console / keyboard wrappers (mn_print_*, mn_read_key, ...)
+│   │   ├── mnoslib_sys.inc    # INT 0x80 system / process / debug wrappers (mn_get_bib, mn_exit, ...)
+│   │   ├── mnoslib_fs.inc     # INT 0x81 filesystem wrappers (mn_save_file, mn_load_file, ...)
+│   │   ├── mnoslib_mm.inc     # INT 0x82 memory manager wrappers (mn_alloc, mn_free, ...)
 │   │   ├── serial.inc         # COM1 serial I/O (debug build only)
 │   │   ├── syscalls.inc       # INT 0x80 syscall function numbers
 │   │   └── version.inc        # Single source of truth for OS version
@@ -294,7 +299,14 @@ mini-os/
 │   ├── test_parse_filename.py # 9 tests for run_parse_filename
 │   ├── test_relocation.py     # 39 tests for relocation toolchain and patching
 │   ├── test_spawn_state.py    # Tests for SYS_SPAWN state machine (push/rollback/depth)
-│   └── test_strcmp.py          # 11 tests for strcmp
+│   ├── test_strcmp.py          # 11 tests for strcmp
+│   │   # --- Tier 0: Structural / static tests (no Unicorn, source-tree scans) ---
+│   ├── test_no_raw_bios_in_userland.py         # No raw INT 0x1x in src/programs/ or src/shell/
+│   ├── test_migrated_programs_use_wrappers.py  # EDIT/BASIC/SYSINFO/MNMON contain zero raw int 0x8N
+│   ├── test_mnoslib_wrapper_shape.py           # Every mn_* wrapper body is canonical mov ah / int / ret
+│   ├── test_mnoslib_syscall_coverage.py        # Bijection: every syscall constant ↔ mn_* wrapper
+│   ├── test_mnoslib_include_order.py           # %include "mnoslib.inc" placed after first label
+│   └── test_mnx_size_budgets.py                # Per-MNX sector budgets + 60-sector TPA ceiling
 ├── CHANGELOG.md
 ├── CODE_OF_CONDUCT.md
 ├── CONTRIBUTING.md
@@ -318,10 +330,15 @@ python -m pytest tests/ -v
 python -m pytest tests/ -v    # coverage is auto-generated on session finish
 ```
 
-**234 tests** across 9 modules: `shell_parse_args` (15), `run_parse_filename` (9),
-`strcmp` (11), `mm_allocator` (29), `fs_write` (26), `cmdmatch` (12),
-`editor` (58), `memory_layout` (16), `relocation` (39), `exec` (17).
-Tests run automatically in CI via GitHub Actions.
+**277 tests** across 19 modules — **Tier 1 (Unicorn-based unit tests):**
+`shell_parse_args` (15), `run_parse_filename` (9), `strcmp` (11),
+`mm_allocator` (29), `fs_write` (26), `cmdmatch` (12), `editor` (58),
+`memory_layout` (16), `relocation` (39), `exec` (17), `spawn_state`.
+**Tier 0 (Structural / static — added in v0.9.18):** `no_raw_bios_in_userland` (2),
+`migrated_programs_use_wrappers` (3), `mnoslib_wrapper_shape` (2),
+`mnoslib_syscall_coverage` (3), `mnoslib_include_order` (2),
+`mnx_size_budgets` (11). Tests run automatically in CI via GitHub Actions.
+See **[doc/TESTING.md](doc/TESTING.md)** for the full 4-tier strategy.
 
 **Coverage metrics:**
 - **Statement coverage** — % of binary addresses executed by tests
@@ -383,6 +400,19 @@ Additional deep-dive documents:
   modular .inc architecture, modal dialog system, Find/Replace engine, memory
   layout, color scheme, key dispatch, and file I/O integration.
 
+- **[doc/BASIC.md](doc/BASIC.md)** — BASIC.MNX interpreter reference: the line-numbered
+  GW-BASIC-style language (PRINT, INPUT, IF/THEN, FOR/NEXT, GOTO, GOSUB,
+  LOAD/SAVE/RUN/LIST), 16-bit integer + string variables A–Z / A$–Z$, arrays,
+  the central error trampoline with ERR/ERL, REPL vs. script modes, and the
+  modular `basic_*.inc` source layout.
+
+- **[doc/MNOSLIB.md](doc/MNOSLIB.md)** — User-mode helper library: the ~50 named
+  `mn_*` wrappers around INT 0x80 / 0x81 / 0x82 syscalls, split across four
+  category headers (io / sys / fs / mm) plus an umbrella include. Documents
+  the canonical wrapper shape, the `%include` placement rule, the
+  one-byte-saved-per-callsite rationale, and the six Tier 0 regression tests
+  that keep the library and its callers honest.
+
 - **[doc/ABI.md](doc/ABI.md)** — Application Binary Interface contract: TPA
   layout, syscall conventions, entry state, unknown-syscall error handling,
   and the binary portability guarantee for .MNX programs across OS versions.
@@ -428,6 +458,7 @@ Each version is a tagged release you can checkout to see the project at that sta
 | `v0.9.15` | **SYS_EXEC + SYS_SPAWN** | Overlay exec (AH=0x27) replaces running program; SYS_SPAWN (AH=0x28) with nested parent reload (4-level stack); trampoline-based shell return; spawn rollback on failure; MNMON `x` command; 234 total tests |
 | `v0.9.16` | **Nested spawn fixes** | Fixed `#UD` crash on multi-level SYS_SPAWN; nested spawns reuse outermost trampoline; spawn rollback on pre-load failure; trampoline re-install after nested unwind |
 | `v0.9.17` | **BASIC + FS API hardening** | BASIC.MNX interactive interpreter (PRINT/INPUT/FOR/GOSUB/LOAD/SAVE/FILES); new FS_REPLACE_FILE atomic syscall (AH=0x09); mnoslib.inc user-mode helpers (mn_save_file, mn_load_file); FS ABI contract v1 (full 32-bit register preservation); EDIT + BASIC migrated to atomic save; doc/BASIC.md; 254 total tests |
+| `v0.9.18` | **Full mnoslib coverage** | Split `mnoslib.inc` into io/sys/fs/mm headers under an umbrella; ~50 wrappers covering every INT 0x80/0x81/0x82 syscall; EDIT, BASIC, and core SHELL refactored to `call mn_*` helpers; new `doc/MNOSLIB.md` catalog; raw `int 0xNN` still works (wrappers are additive) |
 
 ```cmd
 git checkout v0.1.0      # see the project at any prior milestone

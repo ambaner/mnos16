@@ -76,9 +76,8 @@ ed_find_next_from_cursor:
 %ifdef EDIT_DEBUG
     push ax
     mov dx, ax
-    mov ah, SYS_DBG_HEX16
     xor bx, bx
-    int 0x80                        ; Print search start offset
+    call mn_dbg_hex16                  ; Print search start offset
     pop ax
 %endif
 
@@ -91,9 +90,8 @@ ed_find_next_from_cursor:
 %ifdef EDIT_DEBUG
     push ax
     mov dx, ax
-    mov ah, SYS_DBG_HEX16
     xor bx, bx
-    int 0x80                        ; Print found offset
+    call mn_dbg_hex16                  ; Print found offset
     pop ax
 %endif
 
@@ -104,17 +102,14 @@ ed_find_next_from_cursor:
     ; Trace: AX before gap_move_to and gap_start
     push ax
     mov dx, ax
-    mov ah, SYS_DBG_HEX16
     mov bx, 0xAAAA                  ; marker AAAA = "before gap_move_to"
-    int 0x80
+    call mn_dbg_hex16
     mov dx, [gap_start]
-    mov ah, SYS_DBG_HEX16
     mov bx, 0xBBBB                  ; marker BBBB = gap_start value
-    int 0x80
+    call mn_dbg_hex16
     mov dx, [gap_end]
-    mov ah, SYS_DBG_HEX16
     mov bx, 0xCCCC                  ; marker CCCC = gap_end value
-    int 0x80
+    call mn_dbg_hex16
     pop ax
 %endif
 
@@ -123,9 +118,8 @@ ed_find_next_from_cursor:
 %ifdef EDIT_DEBUG
     push ax
     mov dx, [gap_start]
-    mov ah, SYS_DBG_HEX16
     mov bx, 0xDDDD                  ; marker DDDD = gap_start after move
-    int 0x80
+    call mn_dbg_hex16
     pop ax
 %endif
 
@@ -134,9 +128,8 @@ ed_find_next_from_cursor:
 %ifdef EDIT_DEBUG
     push ax
     mov dx, [cursor_col]
-    mov ah, SYS_DBG_HEX16
     mov bx, 0xEEEE                  ; marker EEEE = cursor_col after recalc
-    int 0x80
+    call mn_dbg_hex16
     pop ax
 %endif
 
@@ -154,9 +147,8 @@ ed_find_next_from_cursor:
 %ifdef EDIT_DEBUG
     push si
     mov si, .dbg_wrap
-    mov ah, SYS_DBG_PRINT
     xor bx, bx
-    int 0x80
+    call mn_dbg_print
     pop si
 %endif
 
@@ -167,9 +159,8 @@ ed_find_next_from_cursor:
 %ifdef EDIT_DEBUG
     push ax
     mov dx, ax
-    mov ah, SYS_DBG_HEX16
     xor bx, bx
-    int 0x80                        ; Print wrap-found offset
+    call mn_dbg_hex16                  ; Print wrap-found offset
     pop ax
 %endif
 
@@ -185,9 +176,8 @@ ed_find_next_from_cursor:
 %ifdef EDIT_DEBUG
     push si
     mov si, .dbg_nf
-    mov ah, SYS_DBG_PRINT
     xor bx, bx
-    int 0x80
+    call mn_dbg_print
     pop si
 %endif
     call ed_msg_not_found

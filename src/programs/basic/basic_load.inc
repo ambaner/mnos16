@@ -200,8 +200,7 @@ bas_cmd_files:
     mov ax, ds
     mov es, ax
     mov bx, bas_token_buf
-    mov ah, FS_LIST_FILES
-    int 0x81
+    call mn_list_files
     jc .bcf_io
     ; CL = file count
     xor ch, ch
@@ -295,10 +294,9 @@ bas_load_file:
     ; --- DEBUG: marker so we know we entered bas_load_file --------------
     push si
     push bx
-    mov ah, SYS_DBG_PRINT
     mov si, blf_dbg_enter
     xor bx, bx
-    int 0x80
+    call mn_dbg_print
     pop bx
     pop si
 
@@ -310,8 +308,7 @@ bas_load_file:
     ; FS_FIND_FILE to learn the file's sector count.  Cap to fit in our
     ; conventional load buffer (BAS_LOAD_BUF_LEN = 4096 → 8 sectors).
     mov si, bas_fname_buf
-    mov ah, FS_FIND_FILE
-    int 0x81
+    call mn_find_file
     jc .blf_notfound
     ; CX = sector count.
     cmp cx, (BAS_LOAD_BUF_LEN / 512)
@@ -323,8 +320,7 @@ bas_load_file:
     pop es                          ; ES = our DS
     mov bx, bas_load_buf
     mov si, bas_fname_buf
-    mov ah, FS_READ_FILE
-    int 0x81
+    call mn_read_file
     jc .blf_readerr
     ; AX = bytes read; stash for after the DEBUG print + bas_cmd_new
     mov cx, ax                      ; CX = actual byte count
@@ -332,10 +328,9 @@ bas_load_file:
     ; --- DEBUG: file read OK --------------------------------------------
     push cx
     push dx
-    mov ah, SYS_DBG_PRINT
     mov si, blf_dbg_read
     xor bx, bx
-    int 0x80
+    call mn_dbg_print
     pop dx
     pop cx
 
@@ -347,10 +342,9 @@ bas_load_file:
     ; --- DEBUG: NEW done; about to enter line loop ----------------------
     push cx
     push dx
-    mov ah, SYS_DBG_PRINT
     mov si, blf_dbg_newdone
     xor bx, bx
-    int 0x80
+    call mn_dbg_print
     pop dx
     pop cx
 
@@ -371,10 +365,9 @@ bas_load_file:
     push cx
     push dx
     push si
-    mov ah, SYS_DBG_PRINT
     mov si, blf_dbg_iter
     xor bx, bx
-    int 0x80
+    call mn_dbg_print
     pop si
     pop dx
     pop cx
@@ -424,10 +417,9 @@ bas_load_file:
     push cx
     push dx
     push si
-    mov ah, SYS_DBG_PRINT
     mov si, blf_dbg_copied
     xor bx, bx
-    int 0x80
+    call mn_dbg_print
     pop si
     pop dx
     pop cx
@@ -447,10 +439,9 @@ bas_load_file:
     push cx
     push dx
     push si
-    mov ah, SYS_DBG_PRINT
     mov si, blf_dbg_silentok
     xor bx, bx
-    int 0x80
+    call mn_dbg_print
     pop si
     pop dx
     pop cx
@@ -500,10 +491,9 @@ bas_load_file:
     push bx
     push cx
     push dx
-    mov ah, SYS_DBG_PRINT
     mov si, blf_dbg_done
     xor bx, bx
-    int 0x80
+    call mn_dbg_print
     pop dx
     pop cx
     pop bx

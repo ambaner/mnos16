@@ -29,15 +29,13 @@ ed_menu_loop:
     ; Hide cursor while menu is active
     mov dh, 25
     mov dl, 0
-    mov ah, SYS_SET_CURSOR
-    int 0x80
+    call mn_set_cursor
 
 .ml_loop:
     call ed_draw_current_menu       ; Highlight current selection
 
     ; Read key
-    mov ah, SYS_READ_KEY
-    int 0x80
+    call mn_read_key
 
     ; Check for Esc
     cmp al, 0x1B

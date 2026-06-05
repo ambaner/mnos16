@@ -40,8 +40,7 @@ ed_msgbox:
     ; Hide cursor (move off-screen)
     mov dh, 25
     mov dl, 0
-    mov ah, SYS_SET_CURSOR
-    int 0x80
+    call mn_set_cursor
 
     mov ax, VGA_SEG
     mov es, ax
@@ -116,8 +115,7 @@ ed_msgbox:
     stosw
 
     ; Wait for key
-    mov ah, SYS_READ_KEY
-    int 0x80
+    call mn_read_key
 
     pop si
     pop es

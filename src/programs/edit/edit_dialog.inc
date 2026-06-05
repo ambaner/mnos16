@@ -20,8 +20,7 @@ ed_file_picker:
     ; Hide cursor (move off-screen)
     mov dh, 25
     mov dl, 0
-    mov ah, SYS_SET_CURSOR
-    int 0x80
+    call mn_set_cursor
 
     ; Clear input buffer
     mov byte [_fp_input_len], 0
@@ -31,8 +30,7 @@ ed_file_picker:
     push ds
     pop es
     mov bx, FP_DIR_BUF
-    mov ah, FS_LIST_FILES
-    int 0x81                        ; CL = file count, buffer filled
+    call mn_list_files                  ; CL = file count, buffer filled
 
     ; --- Count valid (non-system, non-deleted) entries ---
     mov si, FP_DIR_BUF + MNFS_HDR_SIZE
@@ -59,8 +57,7 @@ ed_file_picker:
     call ed_fp_draw_dialog
 
 .fp_input:
-    mov ah, SYS_READ_KEY
-    int 0x80
+    call mn_read_key
 
     ; Esc = cancel
     cmp al, 0x1B
@@ -583,12 +580,10 @@ ed_input_prompt:
     add al, MD_BOX_LEFT + 3         ; +3 for border + 2 spaces padding
     mov dl, al                      ; DL = column
     mov dh, MD_BOX_TOP + 1          ; DH = input row (row after top border)
-    mov ah, SYS_SET_CURSOR
-    int 0x80
+    call mn_set_cursor
 
     ; Read key
-    mov ah, SYS_READ_KEY
-    int 0x80
+    call mn_read_key
 
     ; Esc = cancel
     cmp al, 0x1B

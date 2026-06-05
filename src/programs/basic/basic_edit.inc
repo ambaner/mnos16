@@ -50,8 +50,7 @@ bas_readline:
     mov di, bas_line_buf
     xor cx, cx                      ; CX = chars in buffer
 .brl_loop:
-    mov ah, SYS_READ_KEY
-    int 0x80                        ; AH=scancode, AL=ASCII
+    call mn_read_key                ; AH=scancode, AL=ASCII
     cmp al, 13
     je .brl_enter
     cmp al, 8                       ; Backspace
@@ -67,8 +66,7 @@ bas_readline:
     inc cx
     ; Echo
     push ax
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
     pop ax
     jmp .brl_loop
 .brl_bs:
@@ -78,24 +76,19 @@ bas_readline:
     dec cx
     ; Echo BS-space-BS
     mov al, 8
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
     mov al, ' '
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
     mov al, 8
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
     jmp .brl_loop
 .brl_enter:
     mov byte [es:di], 0
     ; Echo CRLF
     mov al, 13
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
     mov al, 10
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
     mov ax, cx
     mov si, bas_line_buf
     pop es

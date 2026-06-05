@@ -218,7 +218,6 @@ ed_set_hw_cursor:
     sub dh, byte [view_top]
     add dh, EDIT_TOP_ROW            ; Screen row
     mov dl, byte [cursor_col]       ; Screen column
-    mov ah, SYS_SET_CURSOR
-    int 0x80
+    call mn_set_cursor
     ret
 

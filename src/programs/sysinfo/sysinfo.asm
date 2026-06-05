@@ -23,6 +23,7 @@
 %include "syscalls.inc"
 %include "memory.inc"
 %include "bib.inc"
+%include "mnfs.inc"                     ; for FS_* constants used by mnoslib_fs.inc
 
 [BITS 16]
 %ifndef RELOC_BASE
@@ -42,3 +43,8 @@ entry:
 ; =============================================================================
 
 %include "sysinfo_data.inc"
+
+; =============================================================================
+; LIBRARY — mnoslib wrappers (placed after entry: per MNOSLIB.md §2)
+; =============================================================================
+%include "mnoslib.inc"

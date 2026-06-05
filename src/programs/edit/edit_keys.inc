@@ -62,8 +62,7 @@ ed_handle_key:
     ; Check for shift state (selection)
     push ax
     mov bx, BDA_SHIFT_FLAGS
-    mov ah, SYS_GET_BDA_BYTE
-    int 0x80                        ; AL = shift flags
+    call mn_get_bda_byte            ; AL = shift flags
     mov dl, al                      ; DL = shift flags
     pop ax
 

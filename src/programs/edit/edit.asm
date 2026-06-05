@@ -130,15 +130,13 @@ entry:
     call ed_init
 
     ; Check if filename was passed as argument
-    mov ah, SYS_GET_ARGC
-    int 0x80
+    call mn_get_argc
     cmp cl, 0
     je .no_file_arg
 
     ; Load the file argument
     mov cl, 0                       ; argv[0]
-    mov ah, SYS_GET_ARGV
-    int 0x80                        ; SI = filename, CX = length
+    call mn_get_argv                ; SI = filename, CX = length
     jc .no_file_arg                 ; Guard: skip if argv failed
     test cx, cx
     jz .no_file_arg                 ; Guard: skip if empty
@@ -151,8 +149,7 @@ entry:
     ; Main loop
 .main_loop:
     ; Read a key
-    mov ah, SYS_READ_KEY
-    int 0x80                        ; AH=scancode, AL=ASCII
+    call mn_read_key                ; AH=scancode, AL=ASCII
 
     ; Dispatch key
     call ed_handle_key

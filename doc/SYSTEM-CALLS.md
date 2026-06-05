@@ -1106,10 +1106,12 @@ Contract v1** documented at the top of `src/fs/fs.asm` and in `doc/FILESYSTEM.md
 | 0x08 | `FS_RENAME_FILE`  | Rename file                                     | DS:SI=old, ES:DI=new; CF+AL on error                      | INT 0x81 |
 | 0x09 | `FS_REPLACE_FILE` | Atomic create-or-replace (data-first, then dir) | DS:SI=name, ES:BX=data, ECX=size, DL=attr; CF+AL on error | INT 0x81 |
 
-User-mode programs should prefer the `mn_save_file` / `mn_load_file` helpers in
-`src/include/mnoslib.inc` over hand-rolled syscall sequences — they wrap
-FS_REPLACE_FILE / FS_READ_FILE with stable names and provide the contract
-documentation in one place.
+User-mode programs should prefer the named `mn_*` helpers in `src/include/mnoslib.inc`
+(or just one of the split headers — `mnoslib_io.inc`, `mnoslib_sys.inc`,
+`mnoslib_fs.inc`, `mnoslib_mm.inc`) over hand-rolled `mov ah, SYS_X / int 0xNN`
+sequences.  The wrappers are pure 1:1 with the underlying syscalls (no register
+contract change) and give the call site a self-documenting name.  See
+`doc/MNOSLIB.md` for the full catalog.
 
 ### 7.3 Stability Guarantee
 

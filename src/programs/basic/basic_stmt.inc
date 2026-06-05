@@ -225,9 +225,8 @@ bas_run_direct:
 
 ; --- SYSTEM (exit interpreter) -------------------------------------------
 .brd_system:
-    mov ah, SYS_EXIT
     xor al, al
-    int 0x80
+    call mn_exit
     ; Should not return; fall through anyway
     jmp .brd_eat_to_sep
 
@@ -429,28 +428,10 @@ bas_stmt_list:
 
 
 ; =============================================================================
-; bas_stmt_cls — clear screen via VGA buffer write.
+; bas_stmt_cls — clear screen via kernel syscall.
 ; =============================================================================
 bas_stmt_cls:
-    push ax
-    push cx
-    push di
-    push es
-    mov ax, 0xB800
-    mov es, ax
-    xor di, di
-    mov cx, 80 * 25
-    mov ax, 0x0720                  ; space, light-grey on black
-    rep stosw
-    ; Reset cursor to top-left via BIOS
-    mov ah, 0x02
-    xor bh, bh
-    xor dx, dx
-    int 0x10
-    pop es
-    pop di
-    pop cx
-    pop ax
+    call mn_clear_screen
     ret
 
 
@@ -596,8 +577,7 @@ bas_run_program:
 ; =============================================================================
 bas_break_check:
     push ax
-    mov ah, SYS_PEEK_KEY
-    int 0x80
+    call mn_peek_key
     jz .bbc_none                    ; ZF=1 → no key
     ; AL = ASCII; AH = scancode (don't care for v1)
     cmp al, 0x03
@@ -608,8 +588,7 @@ bas_break_check:
     jmp .bbc_none
 .bbc_break:
     ; Consume the key
-    mov ah, SYS_READ_KEY
-    int 0x80
+    call mn_read_key
     pop ax
     mov al, BERR_BREAK
     call bas_error
@@ -1813,12 +1792,10 @@ bas_stmt_locate:
     mov bx, [bas_scratch_b]
     dec bx                          ; 0-based row
     dec dx                          ; 0-based col
-    ; Set cursor via BIOS INT 0x10 AH=02
-    mov ah, 0x02
-    xor bh, bh
+    ; Set cursor via kernel syscall (mn_set_cursor wraps SYS_SET_CURSOR)
     mov dh, bl                      ; row
     ; dl already = col
-    int 0x10
+    call mn_set_cursor
     pop dx
     pop cx
     pop bx

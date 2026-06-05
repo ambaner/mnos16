@@ -37,8 +37,7 @@
 entry:
     ; Print banner
     mov si, str_banner
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
 
     ; Initialize current address to 0
     mov word [mon_addr], 0
@@ -49,8 +48,7 @@ entry:
 mon_loop:
     ; Print prompt "* "
     mov si, str_prompt
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
 
     ; Read a line of input
     call mon_readline               ; mon_buf filled, CX = length
@@ -137,26 +135,22 @@ mon_loop:
 
 .cmd_unknown:
     mov si, str_err_cmd
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     jmp mon_loop
 
 .exec_no_args:
     mov si, str_exec_usage
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     jmp mon_loop
 
 .cmd_help:
     mov si, str_help
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     jmp mon_loop
 
 .cmd_quit:
     mov si, str_crlf
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     ret                             ; Return to shell
 
 ; --- db with no args (Enter on empty line) ---
@@ -195,14 +189,11 @@ cmd_db_range:
 
     ; Print address prefix "XXXX: "
     mov dx, di
-    mov ah, SYS_PRINT_HEX16
-    int 0x80
+    call mn_print_hex16
     mov al, ':'
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
     mov al, ' '
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
 
     ; Save line start for ASCII column
     mov [mon_line_start], di
@@ -214,8 +205,7 @@ cmd_db_range:
     ja .db_pad
 
     mov al, [di]
-    mov ah, SYS_PRINT_HEX8
-    int 0x80
+    call mn_print_hex8
 
     ; Separator: '-' after byte 7, ' ' otherwise
     inc di
@@ -224,14 +214,12 @@ cmd_db_range:
     cmp ax, 8
     jne .db_space
     mov al, '-'
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
     dec cx
     jmp .db_byte
 .db_space:
     mov al, ' '
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
     dec cx
     jmp .db_byte
 
@@ -240,22 +228,17 @@ cmd_db_range:
     test cx, cx
     jz .db_ascii
     mov al, ' '
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
+    call mn_print_char
+    call mn_print_char
     dec cx
     jmp .db_pad
 
 .db_ascii:
     ; Print ASCII column: "  " + printable chars
     mov al, ' '
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
+    call mn_print_char
 
     ; Walk from line start to current DI
     mov si, [mon_line_start]
@@ -276,8 +259,7 @@ cmd_db_range:
 .db_dot:
     mov al, '.'
 .db_print_ch:
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
     inc si
     dec cx
     jmp .db_ascii_ch
@@ -285,8 +267,7 @@ cmd_db_range:
 .db_ascii_end:
     ; Newline
     mov si, str_crlf
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     jmp .db_line
 
 .db_done:
@@ -324,11 +305,9 @@ cmd_dw:
 
     ; Address prefix
     mov dx, di
-    mov ah, SYS_PRINT_HEX16
-    int 0x80
+    call mn_print_hex16
     mov al, ':'
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
 
     ; Print 8 words per line
     mov cx, 8
@@ -339,13 +318,11 @@ cmd_dw:
     jz .dw_eol
 
     mov al, ' '
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
 
     ; Read word at [di] (little-endian) and print as 4 hex digits
     mov dx, [di]
-    mov ah, SYS_PRINT_HEX16
-    int 0x80
+    call mn_print_hex16
 
     add di, 2
     dec cx
@@ -353,8 +330,7 @@ cmd_dw:
 
 .dw_eol:
     mov si, str_crlf
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     jmp .dw_line
 
 .dw_done:
@@ -393,8 +369,7 @@ cmd_eb:
 
 .eb_err:
     mov si, str_err_syn
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     jmp mon_loop
 
 .eb_done:
@@ -426,8 +401,7 @@ cmd_ew:
 
 .ew_err:
     mov si, str_err_syn
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     jmp mon_loop
 
 .ew_done:
@@ -551,8 +525,7 @@ cmd_exec:
     push di
     push si
     mov si, str_exec_run
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     mov si, exec_fname
     ; Print 8 chars of name (trim trailing spaces)
     mov cx, 8
@@ -560,46 +533,38 @@ cmd_exec:
     lodsb
     cmp al, ' '
     je .exec_print_dot
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
     dec cx
     jnz .exec_print_name
 .exec_print_dot:
     mov al, '.'
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
     ; Print extension
     mov si, exec_fname + 8
     mov cx, 3
 .exec_print_ext:
     lodsb
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
     dec cx
     jnz .exec_print_ext
     mov si, str_crlf
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     pop si
     pop di
 
     ; Call SYS_SPAWN (child runs, then MNMON is reloaded)
     mov si, exec_fname              ; DS:SI = child's 11-byte filename
     mov bx, mnmon_fname             ; DS:BX = our own filename (for reload)
-    mov ah, SYS_SPAWN
-    int 0x80
+    call mn_spawn
 
     ; Only reaches here on failure (CF=1, AX=error code)
     push ax
     mov si, str_exec_fail
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     pop dx
-    mov ah, SYS_PRINT_DEC16
-    int 0x80
+    call mn_print_dec16
     mov si, str_crlf
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     jmp mon_loop
 
 ; =============================================================================
@@ -611,8 +576,7 @@ mon_readline:
     mov di, mon_buf
 
 .rl_key:
-    mov ah, SYS_READ_KEY
-    int 0x80                        ; AL = ASCII, AH = scancode
+    call mn_read_key                  ; AL = ASCII, AH = scancode
 
     cmp al, 13                      ; Enter?
     je .rl_done
@@ -641,8 +605,7 @@ mon_readline:
     inc cx
 
     ; Echo character
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
     jmp .rl_key
 
 .rl_bs:
@@ -652,13 +615,12 @@ mon_readline:
     dec cx
 
     ; Erase on screen: backspace + space + backspace
-    mov ah, SYS_PRINT_CHAR
     mov al, 8
-    int 0x80
+    call mn_print_char
     mov al, ' '
-    int 0x80
+    call mn_print_char
     mov al, 8
-    int 0x80
+    call mn_print_char
     jmp .rl_key
 
 .rl_done:
@@ -666,8 +628,7 @@ mon_readline:
     ; Print newline
     push cx
     mov si, str_crlf
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     pop cx
     ret
 
@@ -781,66 +742,49 @@ skip_spaces:
 ; =============================================================================
 cmd_bib:
     mov si, str_bib_hdr
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
 
     ; boot_drive
     mov si, str_bib_drv
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     mov al, [BIB_DRIVE]
-    mov ah, SYS_PRINT_HEX8
-    int 0x80
+    call mn_print_hex8
     mov si, str_crlf
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
 
     ; a20_status
     mov si, str_bib_a20
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     mov al, [BIB_A20]
-    mov ah, SYS_PRINT_HEX8
-    int 0x80
+    call mn_print_hex8
     mov si, str_crlf
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
 
     ; part_lba (4 bytes, show as two words: high:low)
     mov si, str_bib_lba
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     mov dx, [BIB_PART_LBA+2]
-    mov ah, SYS_PRINT_HEX16
-    int 0x80
+    call mn_print_hex16
     mov dx, [BIB_PART_LBA]
-    mov ah, SYS_PRINT_HEX16
-    int 0x80
+    call mn_print_hex16
     mov si, str_crlf
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
 
     ; boot_mode
     mov si, str_bib_mode
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     mov al, [BIB_BOOT_MODE]
-    mov ah, SYS_PRINT_HEX8
-    int 0x80
+    call mn_print_hex8
     mov si, str_crlf
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
 
     ; int_depth
     mov si, str_bib_int
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     mov al, [BIB_INT_DEPTH]
-    mov ah, SYS_PRINT_HEX8
-    int 0x80
+    call mn_print_hex8
     mov si, str_crlf
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
 
     jmp mon_loop
 
@@ -851,8 +795,7 @@ cmd_bib:
 cmd_ivt:
     ; CPU exception vectors 0x00–0x07
     mov si, str_ivt_cpu
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     xor bx, bx                     ; BX = vector number
     mov di, 0x0000                  ; DI = IVT offset (vec * 4)
 .ivt_cpu:
@@ -860,28 +803,21 @@ cmd_ivt:
     jge .ivt_os
 
     mov si, str_ivt_int
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     mov al, bl
-    mov ah, SYS_PRINT_HEX8
-    int 0x80
+    call mn_print_hex8
     mov si, str_ivt_sep
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
 
     ; Print SEG:OFF (segment at [di+2], offset at [di])
     mov dx, [di+2]
-    mov ah, SYS_PRINT_HEX16
-    int 0x80
+    call mn_print_hex16
     mov al, ':'
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
     mov dx, [di]
-    mov ah, SYS_PRINT_HEX16
-    int 0x80
+    call mn_print_hex16
     mov si, str_crlf
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
 
     add di, 4
     inc bx
@@ -890,8 +826,7 @@ cmd_ivt:
 .ivt_os:
     ; OS syscall vectors 0x80–0x82
     mov si, str_ivt_os
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     mov bx, 0x80
     mov di, 0x0200                  ; 0x80 * 4 = 0x200
 .ivt_os_loop:
@@ -899,27 +834,20 @@ cmd_ivt:
     jge .ivt_done
 
     mov si, str_ivt_int
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     mov al, bl
-    mov ah, SYS_PRINT_HEX8
-    int 0x80
+    call mn_print_hex8
     mov si, str_ivt_sep
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
 
     mov dx, [di+2]
-    mov ah, SYS_PRINT_HEX16
-    int 0x80
+    call mn_print_hex16
     mov al, ':'
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
     mov dx, [di]
-    mov ah, SYS_PRINT_HEX16
-    int 0x80
+    call mn_print_hex16
     mov si, str_crlf
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
 
     add di, 4
     inc bx
@@ -933,29 +861,24 @@ cmd_ivt:
 ; =============================================================================
 cmd_mcb:
     ; MEM_QUERY: AX=segment, BX=start, CX=size
-    mov ah, MEM_QUERY
-    int 0x82
+    call mn_mem_query
     push cx                         ; Save size
     push bx                         ; Save start
     push ax                         ; Save segment
 
     ; Show heap segment BEFORE changing ES
     mov si, str_mcb_seg
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     pop ax                          ; Segment
     push ax                         ; Re-save
     mov dx, ax
-    mov ah, SYS_PRINT_HEX16
-    int 0x80
+    call mn_print_hex16
     mov si, str_crlf
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
 
     ; Print column header
     mov si, str_mcb_hdr
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
 
     ; Now set up ES:DI for walk
     pop ax                          ; Segment
@@ -975,19 +898,15 @@ cmd_mcb:
 
     ; Print address
     mov dx, di
-    mov ah, SYS_PRINT_HEX16
-    int 0x80
+    call mn_print_hex16
     mov al, ' '
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
 
     ; Print size
     mov dx, [es:di + MCB_SIZE_OFF]
-    mov ah, SYS_PRINT_HEX16
-    int 0x80
+    call mn_print_hex16
     mov al, ' '
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
 
     ; Print status (Used/Free)
     test byte [es:di + MCB_FLAGS_OFF], MCB_FLAG_USED
@@ -997,18 +916,15 @@ cmd_mcb:
 .mcb_free:
     mov si, str_mcb_free_s
 .mcb_stat:
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
 
     ; Print owner ID
     mov al, [es:di + MCB_FLAGS_OFF]
     and al, MCB_OWNER_MASK
     shr al, MCB_OWNER_SHIFT
-    mov ah, SYS_PRINT_HEX8
-    int 0x80
+    call mn_print_hex8
     mov si, str_crlf
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
 
     ; Advance to next MCB
     add di, [es:di + MCB_SIZE_OFF]
@@ -1016,8 +932,7 @@ cmd_mcb:
 
 .mcb_corrupt:
     mov si, str_mcb_bad
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
 .mcb_done:
     ; Restore ES to 0
     xor ax, ax
@@ -1036,13 +951,11 @@ cmd_dir:
     push ds
     pop es                          ; ES = DS = 0
     mov bx, mon_dir_buf
-    mov ah, FS_LIST_FILES
-    int 0x81
+    call mn_list_files
     pop es
 
     mov si, str_dir_hdr
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
 
     ; CL = file count from INT 0x81
     movzx cx, cl
@@ -1062,8 +975,7 @@ cmd_dir:
     mov al, [di]
     cmp al, ' '
     je .dir_name_skip
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
 .dir_name_skip:
     inc di
     dec cx
@@ -1072,8 +984,7 @@ cmd_dir:
 
     ; Print dot separator
     mov al, '.'
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
 
     ; Extension (3 chars)
     push di
@@ -1083,8 +994,7 @@ cmd_dir:
     mov al, [di]
     cmp al, ' '
     je .dir_ext_skip
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
 .dir_ext_skip:
     inc di
     dec cx
@@ -1093,35 +1003,27 @@ cmd_dir:
 
     ; Spacing
     mov al, ' '
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
+    call mn_print_char
 
     ; Attr byte
     mov al, [di + MNFS_ENT_ATTR]
-    mov ah, SYS_PRINT_HEX8
-    int 0x80
+    call mn_print_hex8
     mov al, ' '
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
 
     ; Start sector (4 bytes — show low word only for space)
     mov dx, [di + MNFS_ENT_START]
-    mov ah, SYS_PRINT_HEX16
-    int 0x80
+    call mn_print_hex16
     mov al, ' '
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
 
     ; Sectors
     mov dx, [di + MNFS_ENT_SECTORS]
-    mov ah, SYS_PRINT_HEX16
-    int 0x80
+    call mn_print_hex16
 
     mov si, str_crlf
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
 
     ; Next entry
     add di, MNFS_ENTRY_SIZE
@@ -1197,3 +1099,8 @@ mon_dir_buf     equ (USER_PROG_BASE + 4 * 512)  ; 0x9800
 
 ; =============================================================================
 ; PADDING — fill to 5 sectors (2560 bytes)
+
+; =============================================================================
+; LIBRARY — mnoslib wrappers (placed after entry: per MNOSLIB.md §2)
+; =============================================================================
+%include "mnoslib.inc"

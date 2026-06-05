@@ -17,8 +17,7 @@ readline:
     xor cx, cx                      ; CX = character count
 
 .read_char:
-    mov ah, SYS_READ_KEY            ; Wait for keypress via kernel syscall
-    int 0x80                        ; Returns AH=scancode, AL=ASCII
+    call mn_read_key                ; Wait for keypress; AH=scancode, AL=ASCII
     ; Note: AH now has scancode, not the syscall number anymore
 
     cmp al, 0x0D                    ; Enter key?
@@ -49,9 +48,8 @@ readline:
     mov [bx], al
     inc cx
 
-    ; Echo the character to screen via SYS_PRINT_CHAR
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    ; Echo the character to screen via mn_print_char
+    call mn_print_char
     jmp .read_char
 
 .read_bs:
@@ -62,14 +60,11 @@ readline:
 
     ; Backspace echo: move cursor back, print space, move back again
     mov al, 0x08                    ; Backspace character
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
     mov al, ' '                     ; Overwrite with space
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
     mov al, 0x08                    ; Move cursor back again
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
     jmp .read_char
 
 .read_done:
@@ -81,8 +76,7 @@ readline:
 
     ; Print newline after the entered command
     mov si, msg_crlf
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     ret
 
 ; ---------------------------------------------------------------------------
@@ -184,16 +178,14 @@ rjust_dec16:
 .rj_pad:
     push cx
     mov al, ' '
-    mov ah, SYS_PRINT_CHAR
-    int 0x80
+    call mn_print_char
     pop cx
     dec cl
     jnz .rj_pad
 
 .rj_print:
     pop dx                          ; Restore original value
-    mov ah, SYS_PRINT_DEC16
-    int 0x80
+    call mn_print_dec16
 
     pop cx
     pop bx
@@ -209,8 +201,7 @@ rjust_dec16:
 print_boot_tag:
     push es
     push bx
-    mov ah, SYS_GET_BIB
-    int 0x80                        ; ES:BX = BIB address (ES=0, BX=0x0600)
+    call mn_get_bib                 ; ES:BX = BIB address (ES=0, BX=0x0600)
     cmp byte [es:bx+6], 1          ; BIB_BOOT_MODE at offset 6 from BIB base
     pop bx
     pop es
@@ -220,7 +211,6 @@ print_boot_tag:
 .pbt_debug:
     mov si, msg_tag_debug
 .pbt_print:
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     ret
 

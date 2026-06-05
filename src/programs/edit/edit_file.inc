@@ -53,8 +53,7 @@ ed_check_overwrite:
 
     ; Check if file exists on disk
     mov si, filename
-    mov ah, FS_FIND_FILE
-    int 0x81
+    call mn_find_file
     jc .ow_ok                       ; File doesn't exist — safe to save
 
     ; File exists — ask for confirmation
@@ -172,8 +171,7 @@ ed_load_file_from_name:
     ; Returns: CF=0 success, CF=1 failure
     mov si, filename
     mov bx, GAP_BUF_START           ; Load directly into buffer start
-    mov ah, FS_READ_FILE
-    int 0x81
+    call mn_read_file
     jc .load_fail
 
     ; AX = bytes read, DL = sectors

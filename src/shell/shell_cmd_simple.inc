@@ -11,8 +11,7 @@ cmd_cls:
 ; No direct memory writes — the kernel handles the reset vector.
 ; =============================================================================
 cmd_reboot:
-    mov ah, SYS_REBOOT              ; Ask kernel to warm-reboot
-    int 0x80                        ; Does not return
+    call mn_reboot                  ; Does not return
 
 ; =============================================================================
 ; COMMAND: help
@@ -20,8 +19,7 @@ cmd_reboot:
 ; =============================================================================
 cmd_help:
     mov si, msg_help_text
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     jmp shell_prompt
 
 ; =============================================================================
@@ -30,10 +28,8 @@ cmd_help:
 ; =============================================================================
 cmd_ver:
     mov si, msg_ver_line1
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     call print_boot_tag
     mov si, msg_ver_rest
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
     jmp shell_prompt

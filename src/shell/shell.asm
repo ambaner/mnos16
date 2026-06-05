@@ -46,19 +46,16 @@
 ; =============================================================================
 shell_init:
     ; Clear screen via kernel syscall (sets video mode 3 = 80x25 color text)
-    mov ah, SYS_CLEAR_SCREEN
-    int 0x80
+    call mn_clear_screen
 
     ; Debug: shell starting
     mov bx, dbg_tag
     mov si, dbg_init
-    mov ah, SYS_DBG_PRINT
-    int 0x80
+    call mn_dbg_print
 
     ; Print banner (version line without trailing CRLF)
     mov si, msg_banner
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
 
     ; Print boot mode tag ([Release] or [Debug])
     call print_boot_tag
@@ -67,8 +64,7 @@ shell_init:
 shell_prompt:
     ; Print the shell prompt
     mov si, msg_prompt
-    mov ah, SYS_PRINT_STRING
-    int 0x80
+    call mn_print_string
 
     ; Read a line of user input into cmd_buf (up to 31 chars)
     call readline
@@ -76,8 +72,7 @@ shell_prompt:
     ; Debug: log the command entered
     mov bx, dbg_tag
     mov si, cmd_buf
-    mov ah, SYS_DBG_PRINT
-    int 0x80
+    call mn_dbg_print
 
     ; --- Command dispatch ----------------------------------------------------
     ; Empty input (just pressed Enter) -> re-prompt
@@ -152,6 +147,8 @@ shell_prompt:
 %include "shell_readline.inc"
 
 %include "shell_data.inc"
+
+%include "mnoslib.inc"
 
 ; =============================================================================
 ; END OF MODULE — no padding; pack_module.py handles sector alignment

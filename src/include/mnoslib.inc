@@ -1,57 +1,44 @@
 ; =============================================================================
-; mnoslib.inc — User-mode helper library for MNOS16 programs
+; mnoslib.inc — User-mode helper library for MNOS16 programs (umbrella header)
 ;
-; This is a header-only library: it is `%include`d into each user program
-; and assembled into the program's binary.  Future versions may move to a
-; separate loadable module if size becomes a concern.
+; This file is a thin umbrella that `%include`s the four category-specific
+; mnoslib headers.  User programs that want everything do:
 ;
-; All helpers obey the same calling convention as the underlying syscalls
-; they wrap: AL is clobbered on CF=1 (error code); all other registers are
-; preserved.  Helpers themselves push/pop everything they touch internally
-; so callers can rely on the documented inputs/outputs only.
+;       %include "mnoslib.inc"      ; pulls in io/sys/fs/mm
 ;
-; Currently provided (FS only — INT 0x80 wrappers are out of scope here):
-;   mn_save_file     — Atomic create-or-replace using FS_REPLACE_FILE
-;   mn_load_file     — Read a file in one call (FIND + READ)
+; Programs that want to keep their binary as small as possible should include
+; only the categories they actually use:
 ;
-; Dependencies: caller must `%include "mnfs.inc"` first for the FS_* constants.
+;       %include "mnoslib_io.inc"   ; INT 0x80 console / keyboard helpers
+;       %include "mnoslib_sys.inc"  ; INT 0x80 system / process / debug
+;       %include "mnoslib_fs.inc"   ; INT 0x81 filesystem
+;       %include "mnoslib_mm.inc"   ; INT 0x82 memory manager
+;
+; All wrappers are 1:1 with their underlying syscall.  Each wrapper is the
+; assembly equivalent of `mov ah, NN / int N / ret` and inherits the
+; preservation contract of the syscall it wraps.  No internal data labels,
+; no convenience helpers — those would introduce cross-module relocations.
+;
+; PLACEMENT RULE: include AFTER the program's `entry:` label, alongside
+; other code-bearing `.inc` modules.  The wrappers emit real code and the
+; MNEX loader will execute the very first byte of the program — if mnoslib
+; comes before `entry:`, the loader jumps straight into `mov ah, FS_*`
+; instead of your program's startup code.
+;
+; Dependencies: caller must `%include` the relevant constant headers first:
+;   syscalls.inc  — for SYS_* constants (used by io/sys wrappers)
+;   mnfs.inc      — for FS_* constants (used by fs wrappers)
+;   memory.inc    — for MEM_* constants (used by mm wrappers)
+;
+; See doc/MNOSLIB.md for the full catalog with preservation contracts.
 ; =============================================================================
 
 %ifndef MNOSLIB_INC_INCLUDED
 %define MNOSLIB_INC_INCLUDED
 
-; =============================================================================
-; mn_save_file — Atomic save (create-or-replace) wrapper around FS_REPLACE_FILE.
-;
-; Input:    DS:SI = 11-byte filename (8.3, space-padded, uppercase)
-;           ES:BX = data buffer
-;           ECX   = file size in bytes (0 = empty entry only)
-;           DL    = attribute byte
-; Output on CF=0: success.
-; Output on CF=1: AL = FS_ERR_* code.
-; Preserves: all registers (full 32-bit width) EXCEPT AL on error.
-; =============================================================================
-mn_save_file:
-    mov ah, FS_REPLACE_FILE
-    int 0x81
-    ret
-
-; =============================================================================
-; mn_load_file — Convenience wrapper for FS_READ_FILE.
-; (FS_READ_FILE already does the directory lookup internally; this wrapper
-; exists for symmetry with mn_save_file and to give a stable user-mode name.)
-;
-; Input:    DS:SI = 11-byte filename
-;           ES:BX = destination buffer (large enough for the file)
-;           CX    = max sectors caller's buffer can hold
-; Output on CF=0: AX = file size in bytes (low 16),
-;                 CX = sectors actually read.
-; Output on CF=1: file not found or disk I/O error.
-; Preserves: SI, BX, DX, DI, ES, DS (only AX/CX returned).
-; =============================================================================
-mn_load_file:
-    mov ah, FS_READ_FILE
-    int 0x81
-    ret
+%include "mnoslib_io.inc"
+%include "mnoslib_sys.inc"
+%include "mnoslib_fs.inc"
+%include "mnoslib_mm.inc"
 
 %endif ; MNOSLIB_INC_INCLUDED

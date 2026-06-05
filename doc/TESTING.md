@@ -1,7 +1,7 @@
 # Unit Testing — Design Document
 
-**Version:** 2.2  
-**Status:** Tier 1 implemented (v0.9.17); 254 tests across 13 modules; branch coverage + trend tracking
+**Version:** 2.3  
+**Status:** Tier 0 + Tier 1 implemented; 277 tests across 19 modules (v0.9.18); branch coverage + trend tracking
 **Prerequisite:** Python 3.9+, `pip install -r tests/requirements.txt` (unicorn, pytest, capstone)
 
 ---
@@ -24,10 +24,10 @@ We need a testing strategy that:
 
 ---
 
-## 2. Test Strategy — Three Tiers
+## 2. Test Strategy — Four Tiers
 
-Each tier builds on the previous.  Only **Tier 1** is implemented now; the
-others are documented as future work.
+Each tier builds on the previous.  **Tier 0** and **Tier 1** are implemented
+now; the others are documented as future work.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -39,7 +39,56 @@ others are documented as future work.
 ├──────────────────────────────────────────────────────────────────────┤
 │  Tier 1: Pure-Logic Unit Tests    (Unicorn CPU emulator) ← NOW     │
 │  Test individual routines in isolation — no hardware, no INTs      │
+├──────────────────────────────────────────────────────────────────────┤
+│  Tier 0: Structural / Static Tests (Pure Python regex scans) ← NOW │
+│  Guard architectural invariants — no emulation, just source grep   │
 └──────────────────────────────────────────────────────────────────────┘
+```
+
+### 2.0 Tier 0 — Structural / Static Tests (Current, since v0.9.18)
+
+**Approach:** Pure Python tests that scan the source tree (and the built
+`.MNX` binaries) with regex and small parsers.  No CPU emulation, no NASM
+assembly of stubs — just static checks that catch architectural drift in
+0.3 seconds.
+
+**What it tests:**
+- ABI / layering invariants (e.g., "user-mode programs never call BIOS
+  directly")
+- Symmetry between paired data structures (e.g., "every syscall constant
+  has a matching `mn_*` wrapper, and vice versa")
+- Shape conformance of generated code (e.g., "every `mn_*` wrapper body
+  is exactly `mov ah, CONST / int 0xN / ret`")
+- Binary-size budgets (sector budgets per `.MNX`, global TPA ceiling)
+
+**Why a separate tier?**  These tests don't need Unicorn, NASM stubs, or any
+runtime setup — they read source files and built artifacts directly.  They
+run in fractions of a second and act as a first line of defence against
+silent architectural regressions (e.g., a future PR adding `int 0x80`
+straight into a user program would be caught instantly).
+
+**Current tests (6 modules, 23 individual tests):**
+
+| Test file                                | What it asserts                                                              |
+|------------------------------------------|------------------------------------------------------------------------------|
+| `test_no_raw_bios_in_userland.py`        | No `int 0x1[0-9a-fA-F]` anywhere in `src/programs/` or `src/shell/`.         |
+| `test_migrated_programs_use_wrappers.py` | EDIT / BASIC / SYSINFO / MNMON contain zero raw `int 0x8[012]` sites.        |
+| `test_mnoslib_wrapper_shape.py`          | Every `mn_*:` body is exactly `mov ah, CONST / int 0xN / ret`; prefix→vector match (`SYS_→0x80`, `FS_→0x81`, `MEM_→0x82`).  Parser skips `%`-directives and `mn_xxx equ mn_yyy` aliases. |
+| `test_mnoslib_syscall_coverage.py`       | Bijection: every syscall constant in `syscalls.inc`/`mnfs.inc`/`memory.inc` has a wrapper, and every wrapper resolves to a real constant.  All `equ` aliases point to real wrappers. |
+| `test_mnoslib_include_order.py`          | `%include "mnoslib.inc"` always appears AFTER the program's first label (matches both `entry:` for MNX and `shell_init:`-style names for SYS modules) — prevents the MNEX loader from landing inside wrapper code. |
+| `test_mnx_size_budgets.py`               | Every shipped `.MNX` stays within its per-binary sector budget AND the global `USER_PROG_MAX_SEC = 60` TPA ceiling.  Bumping a budget requires editing the `BUDGETS` dict, forcing explicit code-review acknowledgement. |
+
+**Example test flow:**
+
+```python
+# tests/test_no_raw_bios_in_userland.py
+import re, pathlib
+RAW_BIOS = re.compile(r"\bint\s+0x1[0-9a-fA-F]\b", re.IGNORECASE)
+def test_no_raw_bios_interrupts_in_apps_or_shell():
+    for asm in pathlib.Path("src").rglob("*"):
+        if asm.suffix.lower() not in (".asm", ".inc"): continue
+        if "programs" not in asm.parts and "shell" not in asm.parts: continue
+        assert not RAW_BIOS.search(asm.read_text()), f"raw BIOS int in {asm}"
 ```
 
 ### 2.1 Tier 1 — Pure-Logic Unit Tests (Current)
@@ -184,6 +233,16 @@ tests/
 ├── test_edit_find.py        # 19 tests for search/char_at_offset/atoi
 ├── test_edit_fname.py       # 12 tests for editor 8.3 filename parsing
 ├── test_memory_layout.py    # 16 tests for memory layout consistency (pure Python)
+├── test_exec.py             # tests for INT 0x80 process spawn/exec dispatch
+├── test_relocation.py       # tests for the SYS-module loader's reloc pass
+├── test_spawn_state.py      # tests for spawn/return register-state preservation
+│   # --- Tier 0 (Structural / Static, added v0.9.18) ---
+├── test_no_raw_bios_in_userland.py         # 2 tests — guard no raw INT 0x1x in apps/shell
+├── test_migrated_programs_use_wrappers.py  # 3 tests — EDIT/BASIC/SYSINFO/MNMON mnoslib-clean
+├── test_mnoslib_wrapper_shape.py           # 2 tests — wrapper body shape + nonempty headers
+├── test_mnoslib_syscall_coverage.py        # 3 tests — syscall↔wrapper bijection + alias resolution
+├── test_mnoslib_include_order.py           # 2 tests — %include placement after first label
+├── test_mnx_size_budgets.py                # 11 tests — per-MNX sector budgets + TPA ceiling
 └── requirements.txt         # unicorn, pytest, capstone
 ```
 
@@ -370,21 +429,28 @@ The coverage report generates a JSON file consumed by shields.io:
 
 ## 6. Coverage Targets
 
-### 6.1 Current Testable Code (Tier 1)
+### 6.1 Current Testable Code (Tier 0 + Tier 1)
 
-| Module | Routine | Tests | Status |
-|--------|---------|-------|--------|
-| `shell_parse_args.inc` | `shell_parse_args` | 15 | ✅ Tested |
-| `shell_cmd_run.inc` | `run_parse_filename` | 9 | ✅ Tested |
-| `shell_readline.inc` | `strcmp` | 11 | ✅ Tested |
-| `shell_readline.inc` | `cmdmatch` | 12 | ✅ Tested |
-| `mm.asm` | `mm_alloc/free/avail/info` | 29 | ✅ Tested |
-| `fs.asm` | `fs_write/delete/rename` | 26 | ✅ Tested |
-| `edit_gap.inc` | `gap insert/delete/move` | 27 | ✅ Tested |
-| `edit_find.inc` | `search/char_at/atoi` | 19 | ✅ Tested |
-| `edit_file.inc` | `ed_parse_8_3` | 12 | ✅ Tested |
-| `memory.inc` | layout consistency (pure Python) | 16 | ✅ Tested |
-| | **Total** | **176** | |
+| Tier | Module | Routine / Invariant | Tests | Status |
+|------|--------|---------------------|-------|--------|
+| 1 | `shell_parse_args.inc` | `shell_parse_args` | 15 | ✅ Tested |
+| 1 | `shell_cmd_run.inc` | `run_parse_filename` | 9 | ✅ Tested |
+| 1 | `shell_readline.inc` | `strcmp` | 11 | ✅ Tested |
+| 1 | `shell_readline.inc` | `cmdmatch` | 12 | ✅ Tested |
+| 1 | `mm.asm` | `mm_alloc/free/avail/info` | 29 | ✅ Tested |
+| 1 | `fs.asm` | `fs_write/delete/rename` | 26 | ✅ Tested |
+| 1 | `edit_gap.inc` | `gap insert/delete/move` | 27 | ✅ Tested |
+| 1 | `edit_find.inc` | `search/char_at/atoi` | 19 | ✅ Tested |
+| 1 | `edit_file.inc` | `ed_parse_8_3` | 12 | ✅ Tested |
+| 1 | `memory.inc` | layout consistency (pure Python) | 16 | ✅ Tested |
+| 1 | `kernel/...` | `INT 0x80` exec/spawn dispatch + reloc + spawn state | varies | ✅ Tested |
+| 0 | `src/programs/*`, `src/shell/*` | No raw BIOS interrupts in userland | 2 | ✅ Tested |
+| 0 | EDIT / BASIC / SYSINFO / MNMON | Migrated programs use mnoslib wrappers | 3 | ✅ Tested |
+| 0 | `mnoslib_*.inc` | Canonical wrapper shape | 2 | ✅ Tested |
+| 0 | syscall headers ↔ wrappers | Bijection + alias resolution | 3 | ✅ Tested |
+| 0 | programs using `mnoslib.inc` | `%include` placement after first label | 2 | ✅ Tested |
+| 0 | `build/boot/*.mnx` | Per-binary sector budgets + TPA ceiling | 11 | ✅ Tested |
+| | | **Total** | **277** | |
 
 ### 6.2 Future Testable Code (Tier 2)
 
@@ -445,14 +511,30 @@ Tier 3 (QEMU integration tests) covers these through end-to-end testing.
 
 ## 8. Maintenance
 
-### 8.1 Adding a New Testable Routine
+### 8.1 Adding a New Tier 1 Testable Routine
 
 1. Create a stub in `tests/stubs/stub_<name>.asm`
 2. Add test file `tests/test_<name>.py`
 3. Run `pytest` locally to verify
 4. The CI pipeline auto-discovers new test files
 
-### 8.2 Coverage Regressions
+### 8.2 Adding a New Tier 0 Structural Test
+
+1. Create `tests/test_<invariant>.py` — pure Python, no Unicorn / stub needed
+2. Read source files with `pathlib.Path("src").rglob("*.{asm,inc}")` and
+   scan with `re` or a small line-by-line parser
+3. For tests that read built artifacts (e.g., `.MNX` size budgets), the
+   test should `pytest.skip()` if `build/boot/` is missing, so the test
+   suite can still run on a fresh checkout before the first build
+4. Prefer self-contained parsers over depending on external tooling — the
+   v0.9.18 mnoslib tests deliberately parse the `.inc` files at test time
+   rather than calling `gen_constants.py`, so the tests stay
+   self-documenting and break cleanly when an invariant is violated
+5. **Budget-style tests** (e.g., size limits) should make bumps deliberate:
+   put the limits in a `BUDGETS` dict at the top of the test and require
+   any future PR to edit it explicitly (forcing a CHANGELOG note)
+
+### 8.3 Coverage Regressions
 
 The CI job can optionally enforce a minimum coverage threshold:
 

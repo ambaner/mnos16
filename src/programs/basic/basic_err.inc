@@ -236,9 +236,8 @@ bas_temp_pool_free_all:
     mov ax, [si]                    ; seg
     mov bx, [si+2]                  ; off
     mov es, ax
-    mov ah, MEM_FREE
     mov dl, 1                       ; owner ID 1
-    int 0x82
+    call mn_free
     add si, 4
     loop .btpa_loop
 .btpa_done:
@@ -274,9 +273,8 @@ bas_channels_close_all_discard:
     jz .bccd_zap
     mov bx, [si + BCH_BUF_OFF]
     mov es, ax
-    mov ah, MEM_FREE
     mov dl, 1
-    int 0x82
+    call mn_free
 .bccd_zap:
     mov byte [si + BCH_MODE], BCHAN_CLOSED
     xor ax, ax

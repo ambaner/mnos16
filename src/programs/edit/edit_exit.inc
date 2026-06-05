@@ -18,10 +18,8 @@ ed_cmd_exit:
     jne .exit_cancelled
 .exit_now:
     ; Clear screen and exit to shell
-    mov ah, SYS_CLEAR_SCREEN
-    int 0x80
-    mov ah, SYS_EXIT
-    int 0x80                        ; Does not return
+    call mn_clear_screen
+    call mn_exit                    ; Does not return
 .exit_cancelled:
     ret
 
@@ -41,8 +39,7 @@ ed_cmd_help:
     ; Display help screen (simple overlay)
     call ed_draw_help
     ; Wait for any key
-    mov ah, SYS_READ_KEY
-    int 0x80
+    call mn_read_key
     ; Redraw
     call ed_draw_screen
     ret
@@ -170,8 +167,7 @@ ed_prompt_save_before_exit:
     pop es
 
     ; Read response
-    mov ah, SYS_READ_KEY
-    int 0x80
+    call mn_read_key
     ; Uppercase
     cmp al, 'y'
     jne .spe_check_n

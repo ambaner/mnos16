@@ -49,13 +49,11 @@ entry:
     call bas_puts_nul
 
     ; If we got a filename arg, attempt to LOAD it first
-    mov ah, SYS_GET_ARGC
-    int 0x80
+    call mn_get_argc
     cmp cl, 0
     je .no_arg
     xor cl, cl                      ; argv[0]
-    mov ah, SYS_GET_ARGV
-    int 0x80
+    call mn_get_argv
     jc .no_arg
     test cx, cx
     jz .no_arg
