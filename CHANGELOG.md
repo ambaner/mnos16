@@ -70,7 +70,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added (tests)
 - **Six new structural / regression tests under `tests/`** that guard the
   v0.9.18 mnoslib invariants against silent drift, raising the suite from
-  254 to 277 passing tests:
+  254 to 275 passing tests:
   - `test_no_raw_bios_in_userland.py` — no `int 0x1[0-9a-fA-F]` anywhere
     in `src/programs/` or `src/shell/`.
   - `test_migrated_programs_use_wrappers.py` — EDIT / BASIC / SYSINFO /

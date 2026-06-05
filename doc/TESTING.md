@@ -1,7 +1,7 @@
 # Unit Testing — Design Document
 
 **Version:** 2.3  
-**Status:** Tier 0 + Tier 1 implemented; 277 tests across 19 modules (v0.9.18); branch coverage + trend tracking
+**Status:** Tier 0 + Tier 1 implemented; 275 tests across 19 modules (v0.9.18); branch coverage + trend tracking
 **Prerequisite:** Python 3.9+, `pip install -r tests/requirements.txt` (unicorn, pytest, capstone)
 
 ---
@@ -449,8 +449,8 @@ The coverage report generates a JSON file consumed by shields.io:
 | 0 | `mnoslib_*.inc` | Canonical wrapper shape | 2 | ✅ Tested |
 | 0 | syscall headers ↔ wrappers | Bijection + alias resolution | 3 | ✅ Tested |
 | 0 | programs using `mnoslib.inc` | `%include` placement after first label | 2 | ✅ Tested |
-| 0 | `build/boot/*.mnx` | Per-binary sector budgets + TPA ceiling | 11 | ✅ Tested |
-| | | **Total** | **277** | |
+| 0 | `build/boot/*.mnx` | Per-binary sector budgets + TPA ceiling | 9 | ✅ Tested |
+| | | **Total** | **275** | |
 
 ### 6.2 Future Testable Code (Tier 2)
 

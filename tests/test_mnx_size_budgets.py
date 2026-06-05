@@ -11,6 +11,13 @@ This test asserts each shipped MNX is within its sector budget. A budget
 bump is intentional and requires updating BUDGETS below — that single-line
 change forces the author to acknowledge the size increase in code review.
 
+Sample-only sources that are intentionally excluded from the standard
+build (e.g., `src/programs/hello.asm`, listed in `$SkipPrograms` in
+`tools/build.ps1`) are NOT entered into BUDGETS at all — they are not
+shipped artifacts.  The reverse test `test_every_shipped_mnx_has_a_budget`
+catches any newly-shipped MNX that does not have a budget entry, so the
+two tests together cover both directions.
+
 Runs after the build (per `build.bat`/`tools/build.ps1`), so the .mnx
 files must exist; the test fails loudly if they don't.
 """
@@ -27,9 +34,12 @@ BOOT_DIR = ROOT / "build" / "boot"
 
 # Per-binary sector budgets. To raise a budget: edit the value here and
 # explain why in the CHANGELOG entry that bumps it.
+#
+# NOTE: hello.mnx is NOT listed here — `src/programs/hello.asm` is kept
+# only as a "how to write a simple MNOS program" example and is excluded
+# from the build (see $SkipPrograms in tools/build.ps1) and from the VHD.
 SECTOR_SIZE = 512
 BUDGETS: dict[str, int] = {
-    "hello.mnx":      1,    # Smallest possible MNX (single-sector demo).
     "mnmon.mnx":      6,    # Bumped via mnoslib migration in v0.9.18.
     "sysinfo.mnx":    7,    # Stable since v0.9.18 mnoslib migration.
     "edit.mnx":      15,    # Stable since v0.9.17.
@@ -51,7 +61,9 @@ def test_mnx_within_sector_budget(name: str, max_sectors: int):
     path = BOOT_DIR / name
     assert path.exists(), (
         f"Expected build artifact missing: {path.relative_to(ROOT).as_posix()}. "
-        f"Run the build (build.bat) before running this test."
+        f"Run the build (build.bat) before running this test.  If this MNX "
+        f"is now intentionally excluded from the build, remove it from "
+        f"BUDGETS in tests/test_mnx_size_budgets.py."
     )
     size_bytes = path.stat().st_size
     actual_sectors = math.ceil(size_bytes / SECTOR_SIZE)

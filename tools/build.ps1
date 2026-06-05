@@ -233,7 +233,8 @@ Write-Step '--- User programs ---'
 $ProgramsDir = Join-Path $Root 'src\programs'
 $ProgramOut  = @()
 if (Test-Path $ProgramsDir) {
-    # Programs to skip (source kept as examples but not included in VHD)
+    # Programs to skip (source kept as a "how to write a simple MNOS
+    # program" example, but NOT built into a .mnx or packaged into the VHD).
     $SkipPrograms = @('hello.asm')
 
     $programs = Get-ChildItem $ProgramsDir -Filter '*.asm'

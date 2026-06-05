@@ -330,14 +330,14 @@ python -m pytest tests/ -v
 python -m pytest tests/ -v    # coverage is auto-generated on session finish
 ```
 
-**277 tests** across 19 modules — **Tier 1 (Unicorn-based unit tests):**
+**275 tests** across 19 modules — **Tier 1 (Unicorn-based unit tests):**
 `shell_parse_args` (15), `run_parse_filename` (9), `strcmp` (11),
 `mm_allocator` (29), `fs_write` (26), `cmdmatch` (12), `editor` (58),
 `memory_layout` (16), `relocation` (39), `exec` (17), `spawn_state`.
 **Tier 0 (Structural / static — added in v0.9.18):** `no_raw_bios_in_userland` (2),
 `migrated_programs_use_wrappers` (3), `mnoslib_wrapper_shape` (2),
 `mnoslib_syscall_coverage` (3), `mnoslib_include_order` (2),
-`mnx_size_budgets` (11). Tests run automatically in CI via GitHub Actions.
+`mnx_size_budgets` (9). Tests run automatically in CI via GitHub Actions.
 See **[doc/TESTING.md](doc/TESTING.md)** for the full 4-tier strategy.
 
 **Coverage metrics:**
