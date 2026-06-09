@@ -160,7 +160,7 @@ complex programs use argc/argv.
 
 ## 5. Layer 3 — Environment Variables
 
-**Status:** Proposed for v0.9.9 or v0.10.0
+**Status:** Proposed for v0.9.9 or v0.9.19
 
 ### 5.1 Concept
 
@@ -525,7 +525,7 @@ When the user types a command, the shell processes it through this pipeline:
 |---------|-------|-----------|
 | v0.9.8 ✅ | Layer 2 | argc/argv parsing, SYS_GET_ARGC/SYS_GET_ARGV syscalls, quote support |
 | v0.9.9 | Layer 3 | Environment variables, `set` command, expansion, SYS_GET_ENV |
-| v0.10.0 | Layer 4 | Wildcard expansion (`*`, `?`) against MNFS |
+| v0.9.19 | Layer 4 | Wildcard expansion (`*`, `?`) against MNFS |
 | v0.10.x | Layer 5 | I/O redirection (`>`, `<`), requires FS write support |
 
 Each version is independently useful.  Programs written for Layer 1 (raw args)

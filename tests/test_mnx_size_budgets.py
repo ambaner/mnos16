@@ -46,11 +46,11 @@ BUDGETS: dict[str, int] = {
     "mnmon.mnx":      6,    # Bumped via mnoslib migration in v0.9.18.
     "sysinfo.mnx":    7,    # Stable since v0.9.18 mnoslib migration.
     "edit.mnx":      15,    # Stable since v0.9.17.
-    "basic.mnx":     21,    # Briefly bumped to 22 mid-v0.9.18 by the mnoslib
-                            # umbrella, then returned to 21 after the
-                            # edit_find/basic_load debug-syscall sites were
-                            # collapsed into `call mn_dbg_*` (each site
-                            # shrank by ~2 bytes).
+    "basic.mnx":     35,    # v2.0 BASIC (strings/arrays/file I/O/DATA/DEF FN).
+                            # Pre-v2.0 baseline was 21 sectors.  The +1 over
+                            # current size is intentional headroom for small
+                            # error-message or doc-string tweaks before the
+                            # next budget bump becomes necessary.
 }
 
 # Absolute hard ceiling: MNX programs cannot exceed the TPA size

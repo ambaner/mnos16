@@ -36,7 +36,8 @@
 ; section, so we use the bas_scratch_a slot in basic_data BSS for backing.
 ;
 ;   bas_lex_mode      tracks line-ref context (0 = normal, 1 = single ref,
-;                                              2 = ON list, 3 = LIST n[-m])
+;                                              2 = ON-expr, 3 = LIST n[-m],
+;                                              4 = multi-ref list (ON ... GOTO))
 ;   bas_lex_in_rem    1 = next loop iteration copies raw bytes (after REM)
 ;
 ; They're allocated as 2 bytes inside bas_scratch_a (word) and 2 bytes
@@ -44,7 +45,7 @@
 ; ---------------------------------------------------------------------------
 bas_lex_mode      equ bas_scratch_a       ; byte
 bas_lex_in_rem    equ bas_scratch_a + 1   ; byte
-bas_lex_dummy_lex equ bas_scratch_b       ; word reserved
+bas_lex_in_data   equ bas_scratch_b       ; byte (was bas_lex_dummy_lex reserve)
 
 
 ; =============================================================================
@@ -89,9 +90,18 @@ bas_tokenize_line:
     xor cx, cx                      ; CX = bytes written
     mov byte [bas_lex_mode], 0
     mov byte [bas_lex_in_rem], 0
+    mov byte [bas_lex_in_data], 0
     cld
 
 .tk_loop:
+    ; If we're in DATA-payload mode, emit TOK_DATA_RAW record and resume.
+    cmp byte [bas_lex_in_data], 0
+    je .tk_not_data
+    mov byte [bas_lex_in_data], 0
+    call bas_lex_emit_data_payload
+    jc .tk_fail
+    jmp .tk_loop
+.tk_not_data:
     ; If we're in REM-tail mode, copy raw bytes until terminator.
     cmp byte [bas_lex_in_rem], 0
     je .tk_normal
@@ -293,16 +303,94 @@ bas_lex_emit:
 
 
 ; =============================================================================
+; bas_lex_emit_data_payload — emit TOK_DATA_RAW + len + payload bytes.
+;
+; In:  DS:SI = next source byte (caller already past 'DATA' keyword)
+;      ES:DI = next output position; CX = bytes written so far
+; Out: SI advanced past payload (terminator NOT consumed)
+;      DI/CX advanced past emitted bytes
+;      CF=1 on overflow / payload too long
+; Payload terminates at: NUL, CR, LF, or ':' outside quotes. EOL byte left in [si].
+; Quote handling: balanced "...", anything inside (incl. ':') goes into payload.
+; Max payload length = 255 (1-byte length).  Payload may include leading/trailing
+; whitespace verbatim — bas_stmt_read strips per-item WS.
+; =============================================================================
+bas_lex_emit_data_payload:
+    push bx
+    push dx
+    mov al, TOK_DATA_RAW
+    call bas_lex_emit
+    jc .ldp_fail
+    xor al, al                      ; placeholder length byte
+    call bas_lex_emit
+    jc .ldp_fail
+    mov bx, di                      ; BX = start of payload (len byte is at BX-1)
+    xor dl, dl                      ; DL bit0 = in-quotes flag
+.ldp_loop:
+    mov al, [si]
+    test al, al
+    jz .ldp_done
+    cmp al, 13
+    je .ldp_done
+    cmp al, 10
+    je .ldp_done
+    cmp al, '"'
+    jne .ldp_chk_colon
+    xor dl, 1                       ; toggle quote
+    jmp .ldp_take
+.ldp_chk_colon:
+    test dl, dl
+    jnz .ldp_take                   ; inside quote: accept ':'
+    cmp al, ':'
+    je .ldp_done
+.ldp_take:
+    inc si
+    ; Check max payload length (255)
+    mov ah, dl                      ; save quote flag (bas_lex_emit preserves AX)
+    push ax
+    mov ax, di
+    sub ax, bx
+    cmp ax, 255
+    pop ax
+    jae .ldp_overflow
+    call bas_lex_emit
+    jc .ldp_fail
+    mov dl, ah
+    jmp .ldp_loop
+.ldp_done:
+    ; Patch in length byte at [es:bx-1]
+    mov ax, di
+    sub ax, bx
+    mov [es:bx-1], al
+    pop dx
+    pop bx
+    clc
+    ret
+.ldp_overflow:
+    mov al, BERR_LINETOOLONG
+.ldp_fail:
+    pop dx
+    pop bx
+    stc
+    ret
+
+
+; =============================================================================
 ; bas_lex_after_emit — update line-ref context based on the last emitted
 ; byte (assumed to be in AL on entry).
 ;
 ; Mode transitions (mode = bas_lex_mode):
-;   any GOTO/GOSUB/THEN/ELSE/RUN → mode = 1
+;   any GOTO/GOSUB/THEN/ELSE/RUN → mode = 1   (mode = 4 if prior mode was 2)
 ;   ON                            → mode = 2
 ;   LIST                          → mode = 3
 ;   ':'                           → mode = 0
 ;   ','                           → keep current
 ;   anything else in mode 1       → mode = 0
+;
+; Mode 4 is "multi line-ref list": survives commas and successive linerefs so
+; that `ON expr GOTO 100, 200, 300` (and the GOSUB variant) tokenizes every
+; comma-separated number as TOK_LINEREF. It is reset only by ':' (.lae_clear)
+; or by end-of-line (next bas_tokenize_line resets the mode byte to 0).
 ;
 ; A REM token also triggers REM-tail mode (caller switches to copy).
 ; =============================================================================
@@ -312,6 +400,11 @@ bas_lex_after_emit:
     mov byte [bas_lex_in_rem], 1
     ret
 .lae_not_rem:
+    cmp al, TOK_DATA
+    jne .lae_not_data
+    mov byte [bas_lex_in_data], 1
+    ret
+.lae_not_data:
     cmp al, TOK_GOTO
     je .lae_set1
     cmp al, TOK_GOSUB
@@ -338,7 +431,12 @@ bas_lex_after_emit:
 .lae_done:
     ret
 .lae_set1:
+    cmp byte [bas_lex_mode], 2      ; coming from ON ?
+    je .lae_set4                    ; ON ... GOTO/GOSUB → multi-lineref list
     mov byte [bas_lex_mode], 1
+    ret
+.lae_set4:
+    mov byte [bas_lex_mode], 4
     ret
 .lae_set2:
     mov byte [bas_lex_mode], 2
@@ -696,6 +794,8 @@ bas_detokenize_line:
     je .dt_lineref
     cmp al, TOK_STR_LIT
     je .dt_str
+    cmp al, TOK_DATA_RAW
+    je .dt_dataraw
     cmp al, TOK_VAR_NAME
     je .dt_var
     cmp al, 0x80
@@ -771,6 +871,30 @@ bas_detokenize_line:
 .dt_str_end:
     mov al, '"'
     call bas_lex_putc
+    or  cl, 1
+    jmp .dt_loop
+
+.dt_dataraw:
+    ; TOK_DATA_RAW + len + bytes — emit raw bytes (no quote wrap).
+    ; Caller already printed TOK_DATA keyword (which sets cl|=1 for trailing
+    ; space), so we add a leading space here for readability.
+    test cl, 1
+    jz .dt_dr_no_lead
+    mov al, ' '
+    call bas_lex_putc
+.dt_dr_no_lead:
+    mov al, [si]
+    inc si
+    mov dl, al                      ; DL = length
+.dt_dr_loop:
+    test dl, dl
+    jz .dt_dr_end
+    mov al, [si]
+    inc si
+    call bas_lex_putc
+    dec dl
+    jmp .dt_dr_loop
+.dt_dr_end:
     or  cl, 1
     jmp .dt_loop
 

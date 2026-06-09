@@ -1,4 +1,4 @@
-# BASIC.MNX — Line-Numbered BASIC Interpreter
+# BASIC.MNX — Line-Numbered BASIC Interpreter (v2.0)
 
 A small interactive BASIC interpreter modelled on Microsoft GW-BASIC / IBM
 BASICA.  Shipped as a regular `.MNX` user program, so it is loaded by the
@@ -8,7 +8,7 @@ shell into the Transient Program Area (TPA) like any other application.
 ┌────────────────────────────────────────────────────────────────────────┐
 │  mnos:\> basic                                                         │
 │                                                                        │
-│  MNOS16 BASIC 1.0                                                      │
+│  MNOS16 BASIC 2.0                                                      │
 │  Type HELP for commands.                                               │
 │                                                                        │
 │  Ok                                                                    │
@@ -19,6 +19,19 @@ shell into the Transient Program Area (TPA) like any other application.
 │                                                                        │
 └────────────────────────────────────────────────────────────────────────┘
 ```
+
+**What's new in v2.0** (over the v1.x core that shipped earlier):
+
+- String type — variables (`A$`..`Z$`, `A0$`..`Z9$`), concatenation with `+`,
+  string comparison, and a full set of string functions.
+- Numeric and string arrays via `DIM`, with one-dimensional indexing.
+- File I/O channels: `OPEN`/`CLOSE` with `INPUT`/`OUTPUT`/`APPEND`,
+  `PRINT #n`, `INPUT #n`, `EOF(n)`.
+- `DATA` / `READ` / `RESTORE`.
+- User-defined functions via `DEF FN`.
+- `WHILE` / `WEND` (was tokenised but not executed in v1.x).
+
+Older v1.x programs continue to run unchanged.
 
 ---
 
@@ -66,44 +79,80 @@ variables are preserved).  Use `SYSTEM` to exit back to the shell.
 
 ### 3.1 Data Types
 
-| Type                | Width       | Variable suffix | Range / shape                 |
-|---------------------|-------------|-----------------|-------------------------------|
-| 16-bit signed int   | 2 bytes     | (none)          | −32 768 … +32 767             |
-| String              | length + bytes | `$`           | up to ~80 bytes, BCPL-style   |
+| Type                | Width            | Variable suffix | Range / shape                 |
+|---------------------|------------------|-----------------|-------------------------------|
+| 16-bit signed int   | 2 bytes          | (none)          | −32 768 … +32 767             |
+| String              | length + bytes   | `$`             | up to 80 bytes per value      |
 
-Variables are single letter `A`-`Z`, optionally followed by `$` for strings
-(so `A` and `A$` are different variables of different type).  Arrays are
-created with `DIM` and indexed with parentheses (e.g. `DIM A(10)` then `A(I)`).
+Scalar variable names are a single ASCII letter `A`..`Z`, optionally followed
+by a single digit `0`..`9`, and optionally followed by `$` for strings.  So
+`A`, `A1`, `A$`, and `A1$` are four different variables.  Numeric and string
+variables with the same letters live in separate namespaces.
+
+Arrays are created with `DIM` and indexed with parentheses:
+
+```basic
+DIM A(10)         ' numeric array A(0..10)
+DIM N$(20)        ' string  array N$(0..20)
+A(I) = A(I) + 1
+N$(0) = "Hello"
+```
+
+Arrays are one-dimensional; index range is `0..N` where `N` is the size you
+declared.  A variable cannot be both a scalar and an array; the first form
+used wins.
 
 ### 3.2 Statements
 
-| Keyword      | Form                                                | Notes |
-|--------------|-----------------------------------------------------|-------|
-| `PRINT`      | `PRINT expr-list`                                   | `;` joins without separator; `,` advances to next tab stop. Trailing `;` suppresses newline. |
-| `INPUT`      | `INPUT [prompt;] var`                               | Reads a value (typed at the keyboard) into the variable. |
-| `LET`        | `[LET] var = expr`                                  | `LET` keyword optional. |
-| `IF…THEN`    | `IF cond THEN stmt` or `IF cond THEN line`          | `ELSE` supported on same line. |
-| `FOR…NEXT`   | `FOR i = a TO b [STEP s]` … `NEXT [i]`              | Nested up to 8 deep. |
-| `GOTO`       | `GOTO line`                                         | Jump to absolute line number. |
-| `GOSUB`/`RETURN` | `GOSUB line` … `RETURN`                         | Call stack 16 deep. |
-| `REM`        | `REM rest-of-line`                                  | Comment. |
-| `CLS`        | `CLS`                                               | Clear screen. |
-| `END`/`STOP` | `END` / `STOP`                                      | Stop program, return to REPL. |
-| `DIM`        | `DIM var(size)`                                     | Allocate a 16-bit-int array. |
-| `RANDOMIZE`  | `RANDOMIZE`                                         | Seed RNG from TIME. |
+| Keyword         | Form                                                | Notes |
+|-----------------|-----------------------------------------------------|-------|
+| `PRINT`         | `PRINT expr-list`                                   | `;` joins without separator; `,` advances to next tab stop. Trailing `;` suppresses newline.  Numbers and strings can be freely mixed. |
+| `PRINT #n,`     | `PRINT #n, expr-list`                               | Writes to a file channel opened for `OUTPUT` or `APPEND`. |
+| `INPUT`         | `INPUT [prompt;] var [, var ...]`                   | Reads value(s) typed at the keyboard. |
+| `INPUT #n,`     | `INPUT #n, var [, var ...]`                         | Reads from a file channel opened for `INPUT`. |
+| `LET`           | `[LET] var = expr`                                  | `LET` keyword optional. |
+| `IF…THEN`       | `IF cond THEN stmt` or `IF cond THEN line`          | `ELSE` supported on same line. |
+| `FOR…NEXT`      | `FOR i = a TO b [STEP s]` … `NEXT [i]`              | Nested up to 8 deep. |
+| `WHILE…WEND`    | `WHILE cond` … `WEND`                               | Nested up to 8 deep. |
+| `GOTO`          | `GOTO line`                                         | Jump to absolute line number. |
+| `GOSUB`/`RETURN`| `GOSUB line` … `RETURN`                             | Call stack 16 deep. |
+| `ON…GOTO/GOSUB` | `ON expr GOTO line, line, …`                        | One-based dispatch; out-of-range falls through. |
+| `REM`           | `REM rest-of-line`                                  | Comment. |
+| `CLS`           | `CLS`                                               | Clear screen. |
+| `LOCATE`        | `LOCATE row, col`                                   | 1-based cursor positioning. |
+| `COLOR`         | `COLOR fg [, bg]`                                   | Set text colour for subsequent output. |
+| `POKE`          | `POKE addr, byte`                                   | Write a byte at `DEF SEG`:offset. |
+| `END`/`STOP`    | `END` / `STOP`                                      | Stop program, return to REPL. |
+| `DIM`           | `DIM var(size)`                                     | Allocate a 1-D numeric or string array. |
+| `DEF SEG`       | `DEF SEG = expr` or `DEF SEG`                       | Set / reset the segment used by `PEEK`/`POKE`. |
+| `DEF FN`        | `DEF FN name(param) = expr`                         | Define a single-argument numeric function. |
+| `RANDOMIZE`     | `RANDOMIZE`                                         | Seed RNG from `TIME`. |
+| `OPEN`          | `OPEN "FILE.EXT" FOR mode AS #n`                    | `mode` ∈ {`INPUT`, `OUTPUT`, `APPEND`}.  Channels `#1`..`#4`. |
+| `CLOSE`         | `CLOSE [#n [, #n ...]]`                             | Bare `CLOSE` closes all open channels. |
+| `DATA`          | `DATA item, item, ...`                              | Inline data for `READ`; quoted items become strings. |
+| `READ`          | `READ var [, var ...]`                              | Pull next `DATA` items into the listed variables. |
+| `RESTORE`       | `RESTORE [line]`                                    | Rewind the data cursor (optionally to the first `DATA` at/after `line`). |
 
 ### 3.3 Functions
 
-Numeric: `ABS`, `SGN`, `INT`, `RND(n)`, `TIME`, `PEEK(addr)`,
-         `LEN(s$)`, `ASC(c$)`, `VAL(s$)`, `EOF(n)`
+**Numeric:**
+`ABS(n)`, `SGN(n)`, `INT(n)`, `RND(n)`, `TIME`, `PEEK(addr)`,
+`LEN(s$)`, `ASC(c$)`, `VAL(s$)`, `EOF(n)`.
 
-String:  `CHR$(n)`, `STR$(n)`, `LEFT$(s$, n)`, `RIGHT$(s$, n)`,
-         `MID$(s$, start[, len])`, `INKEY$`, `INPUT$(n)`
+**String:**
+`CHR$(n)`, `STR$(n)`, `LEFT$(s$, n)`, `RIGHT$(s$, n)`,
+`MID$(s$, start[, len])`, `INKEY$`, `INPUT$(n)`.
+
+**User-defined:**
+After `DEF FN F(X) = X * X + 1`, the expression `FN F(7)` evaluates to 50.
+User functions take one numeric argument and return a number; the body may
+call other (non-recursive) user functions.
 
 ### 3.4 Operators
 
 Arithmetic: `+ - * /`, integer `MOD`
-Relational: `= <> < <= > >=`
+String:     `+`  (concatenation; `"AB" + "CD"` → `"ABCD"`)
+Relational: `= <> < <= > >=`  (numeric *and* string)
 Logical:    `AND OR NOT`
 
 Standard precedence: `NOT > * / MOD > + - > relational > AND > OR`.
@@ -126,7 +175,15 @@ Parentheses override.
 | `SYSTEM`             | Exit BASIC, return to the shell                              |
 
 Quoted filenames are recommended; bare filenames also work (e.g.
-`LOAD HELLO.BAS`).  The `.BAS` extension is added automatically if omitted.
+`LOAD TESTBAS.BAS`).  The `.BAS` extension is added automatically if omitted.
+
+**`NEW` / `CLEAR` semantics.**  Both call the same teardown helper that:
+- closes every open file channel (`#1`..`#4`),
+- frees every array and string variable's heap allocation,
+- frees the string-variable heap and every temp string,
+- rewinds the `DATA` cursor and clears the `DEF FN` table.
+
+`NEW` additionally empties the program buffer; `CLEAR` keeps it.
 
 **SAVE atomicity.**  `SAVE` is implemented via the `FS_REPLACE_FILE` syscall
 (AH=0x09) through the `mn_save_file` helper in `mnoslib.inc`.  The new file
@@ -137,67 +194,146 @@ MNFS's append-only allocation model).
 
 ---
 
-## 5. Sample Programs
-
-Two `.BAS` files are pre-seeded on the disk image — try them first:
-
-### 5.1 `HELLO.BAS`
+## 5. File I/O
 
 ```basic
-10 REM HELLO.BAS - prints squares of 1..10
-20 PRINT "Squares from 1 to 10:"
-30 FOR I = 1 TO 10
-40 PRINT I; "squared is"; I * I
-50 NEXT I
-60 PRINT "Done."
-70 END
+10 OPEN "OUT.TXT" FOR OUTPUT AS #1
+20 FOR I = 1 TO 5
+30   PRINT #1, I, I * I
+40 NEXT I
+50 CLOSE #1
+60 OPEN "OUT.TXT" FOR INPUT AS #2
+70 WHILE NOT EOF(2)
+80   INPUT #2, A, B
+90   PRINT A, B
+100 WEND
+110 CLOSE #2
 ```
 
-### 5.2 `GUESS.BAS`
+- Channels `#1`..`#4` (four concurrent files).
+- `FOR OUTPUT` starts an empty buffer; the file is rewritten atomically at
+  `CLOSE` via `FS_REPLACE_FILE`.
+- `FOR APPEND` reads the existing file first (if any), then behaves like
+  `OUTPUT` — the file is rewritten with the original + appended bytes.
+- `FOR INPUT` slurps the file into a 4 KB per-channel buffer in High Memory
+  (HMA).  `EOF(n)` returns true when the read cursor reaches end-of-data.
+- `NEW`, `CLEAR`, `SYSTEM`, and any runtime error close all open channels.
+  `OUTPUT`/`APPEND` channels closed by error are *not* flushed (the buffer
+  is discarded), which matches the "no half-written files" guarantee.
 
-```basic
-10 REM GUESS.BAS - guess a number between 1 and 100
-20 RANDOMIZE
-30 LET N = RND(100)
-40 LET T = 0
-50 PRINT "I'm thinking of a number from 1 to 100."
-60 INPUT "Your guess"; G
-70 LET T = T + 1
-80 IF G = N THEN GOTO 200
-90 IF G < N THEN PRINT "Too low."
-100 IF G > N THEN PRINT "Too high."
-110 IF T < 10 THEN GOTO 60
-120 PRINT "Out of guesses. It was"; N
-130 END
-200 PRINT "Got it in"; T; "tries!"
-210 END
-```
-
-Load and run either with:
-
-```
-basic hello.bas
-RUN
-```
+Per-channel cap: 4 KB.  Exceeding this from `PRINT #` returns
+`Out of memory`; reading a >4 KB file with `FOR INPUT` truncates at 4 KB.
 
 ---
 
-## 6. Error Handling
+## 6. DATA / READ / RESTORE
+
+```basic
+10 DATA 3, 1, 4, 1, 5, 9, 2, 6
+20 DATA "Spring", "Summer", "Autumn", "Winter"
+30 FOR I = 1 TO 8
+40   READ N
+50   PRINT N;
+60 NEXT I
+70 PRINT
+80 FOR I = 1 TO 4
+90   READ S$
+100   PRINT S$
+110 NEXT I
+120 RESTORE
+130 READ X : PRINT "First number again:"; X
+```
+
+- `DATA` items can be unquoted (any non-`,`, non-`:` text) or `"quoted"`
+  (any characters except `"`).  Whitespace around items is trimmed.
+- `READ N` parses the next item as an integer (`VAL`-style).
+- `READ S$` takes the next item as a string.
+- `RESTORE` (no argument) rewinds to the first `DATA` in the program.
+- `RESTORE line` rewinds to the first `DATA` at or after `line`.
+- Reading past the last item raises `Out of DATA`.
+
+---
+
+## 7. DEF FN
+
+```basic
+10 DEF FN SQ(X) = X * X
+20 DEF FN HYP(X) = INT(SQR(FN SQ(X) + FN SQ(X+1)))     ' (illustrative)
+30 PRINT FN SQ(5), FN SQ(12)
+40 DEF FN SQ(X) = X * X * X       ' redefining is allowed
+50 PRINT FN SQ(5)                  ' now 125
+```
+
+- Single-argument numeric functions only.
+- The parameter is a normal `A`..`Z[0-9]` variable; while the function body
+  runs, the parameter's value is the argument, and the previous value is
+  restored on return.
+- A user function can refer to other user functions, but **direct or
+  indirect recursion** is rejected with `Too complex`.
+- Up to 16 user functions; redefining an existing name replaces its body.
+
+---
+
+## 8. Sample Program — `TESTBAS.BAS`
+
+The disk image ships with one all-in-one `.BAS` file — `TESTBAS.BAS` — which
+exercises every v2.0 feature behind a menu.  (The MNFS directory is capped at
+15 entries total, so the disk holds a single consolidated sample rather than
+several smaller ones.)
+
+```
+mnos:\> basic testbas.bas
+RUN
+
+MNOS16 BASIC 2.0 - Test Menu
+----------------------------
+  1. HELLO    - FOR/NEXT squares
+  2. GUESS    - INPUT + RND number guess
+  3. STRINGS  - string variables and functions
+  4. DATA     - DATA / READ / RESTORE
+  5. DEFFN    - DEF FN user functions
+  6. FILEIO   - OPEN/CLOSE/PRINT#/INPUT#/EOF (creates TMP.TXT)
+  7. WHILE    - WHILE/WEND loop
+  8. ARRAY    - DIM + 1-D array sum
+  0. QUIT
+Choice?
+```
+
+Each section is namespaced by line range (1000s for HELLO, 2000s for GUESS,
+…, 8000s for ARRAY) and ends with `GOTO 20` to return to the menu.  Variable
+names are chosen so that exercising any subset of the sections in any order
+will not cause cross-section collisions (notably: the ARRAY test uses `Q` so
+that the FILEIO scalar `F1`/`F2` does not clash with a `DIM`med name).
+
+`FILEIO` writes a `TMP.TXT` to disk; subsequent runs replace it atomically,
+but it remains on disk after the test — use the shell `del tmp.txt` if you
+need to reclaim the directory slot.
+
+---
+
+## 9. Error Handling
 
 When a runtime or syntax error occurs, BASIC prints a brief message and the
 line number on which it happened, then returns to the REPL prompt.  The
-program and all variables are preserved.
+program and all variables are preserved (open file channels are closed
+without flushing).
 
-| Message               | Meaning                                                |
-|-----------------------|--------------------------------------------------------|
-| `Syntax error in N`   | Could not tokenise or parse the line                    |
-| `Type mismatch in N`  | Wrong type in an expression (e.g. number where string expected) |
-| `Undefined line N`    | `GOTO`/`GOSUB`/`THEN` target line does not exist        |
-| `Out of memory`       | Program buffer or variable storage exhausted            |
-| `Out of data`         | `READ` past end of `DATA` (reserved)                    |
-| `Division by zero`    | `/` or `MOD` with zero divisor                          |
-| `Illegal function call` | Argument out of range for a function                  |
-| `Disk error`          | `LOAD`/`SAVE` failed (see serial debug for FS error code)|
+| Message                  | Meaning                                                  |
+|--------------------------|----------------------------------------------------------|
+| `Syntax error in N`      | Could not tokenise or parse the line                     |
+| `Type mismatch in N`     | Numeric expression where string expected, or vice versa  |
+| `Undefined line N`       | `GOTO`/`GOSUB`/`THEN` target line does not exist         |
+| `Out of memory`          | Program buffer, var/array storage, or channel buf full   |
+| `Out of DATA`            | `READ` past the end of all `DATA` statements             |
+| `Division by zero`       | `/` or `MOD` with zero divisor                           |
+| `Illegal function call`  | Argument out of range for a function                     |
+| `Too complex`            | Recursion in `DEF FN`, or temp-string pool full          |
+| `Too many variables`     | Variable / `DEF FN` / array table full                   |
+| `String too long`        | String value would exceed 80 bytes                       |
+| `Subscript out of range` | Array index outside `0..DIM size`                        |
+| `Bad file number`        | `#n` is not a currently open channel                     |
+| `File not found`         | `LOAD` / `OPEN FOR INPUT` of a missing file              |
+| `Disk error`             | `LOAD`/`SAVE`/file I/O failed (see serial debug)         |
 
 Internally, all error paths jump to a central `bas_error` trampoline that
 restores the REPL stack frame and resumes input — no `iret`-from-nowhere
@@ -205,39 +341,50 @@ hazards.
 
 ---
 
-## 7. Internals
+## 10. Internals
 
-Layout (all relative to TPA load address):
+Source modules (`src/programs/basic/`):
 
 ```
-Source modules (src/programs/basic/):
-  basic.asm          Entry point, REPL loop, MNEX header
-  basic_data.inc     Fixed-address layout: program buffer, variable table,
-                     for-stack, gosub-stack, error trampoline state
-  basic_tokens.inc   Keyword / function / operator token IDs and spellings
-  basic_lex.inc      Tokenizer (one-pass; numbers and strings stored inline)
-                     and detokenizer for LIST
-  basic_err.inc      Central error path, ERR/ERL, message table
-  basic_edit.inc     Readline + program-line list operations (insert/replace/delete)
-  basic_load.inc     LOAD / SAVE (via mn_save_file) / FILES
-  basic_var.inc      Variable storage (A-Z scalars + arrays + strings)
-  basic_expr.inc     Pratt-style expression evaluator (int + string)
-  basic_stmt.inc     Statement dispatcher + handler set
+basic.asm             Entry point, REPL loop, MNEX header.  Master %include list.
+basic_data.inc        Fixed-address layout: program buffer, var table, FOR/GOSUB
+                      stacks, channel records, DEF FN table, error trampoline state.
+basic_tokens.inc      Keyword / function / operator token IDs and spellings.
+basic_lex.inc         Tokenizer (one-pass; numbers/strings stored inline) and the
+                      detokenizer used by LIST and SAVE.
+basic_err.inc         Central error path, ERR/ERL, message table.
+basic_edit.inc        Readline + program-line list operations (insert/replace/delete).
+basic_load.inc        LOAD / SAVE (via mn_save_file) / FILES / NEW / CLEAR.
+basic_var.inc         Variable storage (numeric + string scalars).
+basic_str.inc         String descriptors, the HMA string-var heap, and the
+                      temp-string pool freed at each statement boundary.
+basic_array.inc       DIM + 1-D array storage (numeric and string).
+basic_io.inc          File channels — OPEN / CLOSE / PRINT# / INPUT# / EOF.
+basic_dataread.inc    DATA tokenisation payload + READ / RESTORE.
+basic_defn.inc        DEF FN registration + invocation.
+basic_expr.inc        Pratt-style expression evaluator (typed: numeric + string).
+basic_stmt.inc        Statement dispatcher + handler set.
 ```
 
-### 7.1 Tokenisation
+### 10.1 Tokenisation
 
 Each line is tokenised once on entry.  Numeric literals become a 1-byte
 `TOK_INT_LIT` followed by a 2-byte little-endian value.  Line references
 (targets of `GOTO`/`GOSUB`/`THEN`) become `TOK_LINEREF` + line number, which
-makes the runtime branch fast.  Strings become `TOK_STR_LIT` + length + bytes.
-Variable names are stored as `TOK_VAR_NAME` + single ASCII letter (+ `$` for
-string vars).  Keywords and operators each have their own token ID
-(see `basic_tokens.inc`).
+makes the runtime branch fast.  Quoted strings become `TOK_STR_LIT` +
+length + bytes.  Variable names are stored as `TOK_VAR_NAME` + a packed
+2-byte name (letter, then digit-or-`$`-or-NUL).  Keywords and operators each
+have their own token ID (see `basic_tokens.inc`).
 
-`LIST` reverses this with a small per-token print table.
+`DATA` payloads use a dedicated `TOK_DATA_RAW` (= 0xF4) + length + raw bytes
+format: the tokenizer emits the keyword `DATA`, then a single `TOK_DATA_RAW`
+record containing everything up to the next `:` or end-of-line (with
+`:`-inside-quotes preserved).  `READ` parses items from this payload at run
+time; `LIST` and `SAVE` print the bytes back verbatim.
 
-### 7.2 Program Storage
+`LIST` reverses tokenisation with a small per-token print table.
+
+### 10.2 Program Storage
 
 The program is stored as a sorted linked list of line records:
 
@@ -249,18 +396,41 @@ The program is stored as a sorted linked list of line records:
 record; zero means end-of-program.  This makes `LIST`, `LOAD`/`SAVE`, and line
 insertion all simple linear walks.
 
-### 7.3 FOR / GOSUB Stacks
+### 10.3 Expression Evaluator
+
+`bas_expr_eval` returns its result via a fixed 8-byte BSS slot
+`bas_expr_result` carrying `{type, length, lo, hi/pointer}`.  Numeric callers
+use the wrapper `bas_expr_eval_int` which enforces `'N'` and returns the
+value in `DX`.
+
+String temporaries (e.g. `LEFT$(A$+B$, 3)`) are allocated in HMA from a
+32-entry pool; `bas_temp_pool_free_all` is called at each statement boundary.
+String *variables* live in a separate 2 KB HMA heap with fixed 80-byte slots
+per name — reassigning a string variable overwrites the slot in place.
+
+### 10.4 Stacks: FOR / GOSUB / WHILE
 
 `FOR` pushes a record on the for-stack: `{ var_addr, end_val, step_val,
 loop_top_offset }`.  `NEXT` peeks the top, applies STEP, compares with end,
-either falls through (loop done) or jumps back to `loop_top_offset`.  The
-matching `NEXT [var]` form looks up the stack until it finds a record whose
-`var_addr` matches.
+either falls through (loop done) or jumps back to `loop_top_offset`.
+`NEXT var` rewinds the stack until it finds a matching record.
+
+`WHILE` shares the for-stack and records `{ loop_top_offset }`; `WEND`
+re-evaluates the condition and jumps back or pops.
 
 `GOSUB` pushes the *return offset* (offset within program buffer of the
 statement after the `GOSUB`) on the gosub-stack; `RETURN` pops and jumps.
 
-### 7.4 The bas_error Trampoline
+### 10.5 File Channels
+
+Four channel records live at fixed BSS offsets.  Each holds: a 2-byte HMA
+allocation handle, a mode byte, a current-position word, and a current-length
+word.  `PRINT #` formats into a local stack buffer then `memcpy`s into the
+channel buffer at `+length`; `INPUT #` parses tokens out of the buffer at
+`+position`.  `CLOSE` of an `OUTPUT`/`APPEND` channel pages the buffer back
+out to disk in ≤4 KB chunks via `mn_load_file` staging and `FS_REPLACE_FILE`.
+
+### 10.6 The bas_error Trampoline
 
 A `setjmp`-style mechanism implemented entirely in 16-bit asm: at REPL entry,
 `bas_repl_sp` is saved.  Any error path does:
@@ -271,9 +441,11 @@ jmp bas_repl_resume
 ```
 
 — so the deep handler stack is unwound in one shot and control resumes at the
-prompt.  This is what avoids the triple-fault-on-LOAD failure pattern.
+prompt.  The trampoline also runs `bas_temp_pool_free_all`, closes all
+channels with discard, and clears the `DEF FN` recursion guard, so the next
+input line starts from a clean transient state.
 
-### 7.5 SAVE
+### 10.7 SAVE
 
 `SAVE` calls `mn_save_file` (`mnoslib.inc`), which wraps `FS_REPLACE_FILE`
 (INT 0x81 AH=0x09).  This is atomic: data is written to new sectors first,
@@ -288,29 +460,39 @@ bug.
 
 ---
 
-## 8. Known Limits
+## 11. Known Limits
 
 | Limit                            | Value         |
 |----------------------------------|---------------|
-| Max program size                 | ~6 KB tokens  |
-| Max string length                | ~80 bytes     |
+| Program buffer                   | 5 KB tokens (≈5 120 bytes)   |
+| Max string value                 | 80 bytes      |
+| String-variable heap (HMA)       | 2 KB → ~25 distinct string variables |
+| Temp-string pool                 | 32 concurrent temps per statement |
 | Numeric range                    | 16-bit signed |
-| Variables                        | A-Z scalars + A$-Z$ strings + DIM arrays |
-| FOR/NEXT nesting                 | 8 deep        |
+| Scalar variables                 | 96 entries (numeric + string + array headers combined) |
+| Array entries (per array)        | Capped by HMA heap and the 96 var-table slots |
+| Open file channels               | 4 (`#1`..`#4`) |
+| Per-channel I/O buffer (HMA)     | 4 KB          |
+| `DEF FN` count                   | 16            |
+| `DATA` payload per source line   | 255 bytes (raw) |
+| FOR/WHILE nesting (shared)       | 8 deep        |
 | GOSUB nesting                    | 16 deep       |
 | Line numbers                     | 1 … 65535     |
 | `.BAS` files in `FILES`          | Up to MNFS dir capacity (15 entries total disk-wide) |
 
-No floating-point, no `WHILE/WEND` runtime (token reserved), no file I/O
-beyond `LOAD`/`SAVE` (`OPEN`/`CLOSE` tokens reserved for future use),
-no `DATA/READ/RESTORE` (reserved).
+No floating-point.  No multi-dimensional arrays.  No `ON ERROR` /
+user-driven error trapping (the central trampoline always resumes at the
+REPL prompt).
 
 ---
 
-## 9. References
+## 12. References
 
-- `src/programs/basic/basic.asm` — module overview and includes
+- `src/programs/basic/basic.asm` — module overview and `%include` order
 - `src/programs/basic/basic_data.inc` — runtime layout
 - `doc/FILESYSTEM.md` §8.9 — `FS_REPLACE_FILE` syscall used by `SAVE`
-- `src/include/mnoslib.inc` — `mn_save_file` / `mn_load_file` helpers
-- `data/HELLO.BAS`, `data/GUESS.BAS` — sample programs (seeded onto VHD)
+- `doc/MNOSLIB.md` — `mn_save_file` / `mn_load_file` helpers
+- `tests/test_basic_*.py` — structural regression tests for tokens, dispatchers,
+  budgets
+- `data/TESTBAS.BAS` — single consolidated sample / smoke-test program
+  (seeded onto the VHD)

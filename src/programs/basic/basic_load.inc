@@ -153,10 +153,11 @@ bas_fname_normalize:
 
 
 ; =============================================================================
-; bas_cmd_new — wipe program + everything
+; bas_cmd_new — wipe program + everything (releases the HMA string heap too)
 ; =============================================================================
 bas_cmd_new:
     call bas_cmd_clear
+    call bas_str_heap_release       ; free underlying HMA block (CLEAR only resets)
     call bas_prog_clear
     ret
 
@@ -166,6 +167,11 @@ bas_cmd_new:
 ; =============================================================================
 bas_cmd_clear:
     push ax
+    ; Free temp pool, channels, and array storage BEFORE clearing the var
+    ; table (array_free_all walks the table via bas_var_count).
+    call bas_temp_pool_free_all
+    call bas_channels_close_all_discard
+    call bas_array_free_all
     xor ax, ax
     mov [bas_var_count], ax
     mov [bas_gs_top], ax
@@ -173,9 +179,15 @@ bas_cmd_clear:
     mov [bas_wh_top], ax
     mov [bas_ex_top], ax
     mov [bas_op_top], ax
-    ; Free temp pool and channels (defined in basic_err.inc)
-    call bas_temp_pool_free_all
-    call bas_channels_close_all_discard
+    ; Reset string-var heap bump pointer (keep underlying HMA block)
+    call bas_str_heap_reset
+    ; Reset DATA cursor
+    xor ax, ax
+    mov [bas_data_line_ptr], ax
+    mov [bas_data_sub_off], ax
+    ; Reset user-fn table + recursion guard
+    mov [bas_userfn_count], ax
+    mov byte [bas_userfn_depth], 0
     ; Reset DEF SEG to our own segment
     mov ax, ds
     mov [bas_def_seg], ax
@@ -695,7 +707,7 @@ bas_save_file:
     je .bsf_noprog
 
     ; --- Emit LIST output into the conventional load/save scratch buffer ----
-    ; bas_load_buf at 0xC000 (BAS_LOAD_BUF_LEN = 4096) is conventional memory,
+    ; bas_load_buf at 0xD400 (BAS_LOAD_BUF_LEN = 4096) is conventional memory,
     ; safe for BIOS INT 13h writes (no A20 wrap).  Caps SAVE at 4KB.
     mov word [bas_pi_old_size], 0                  ; segment = DS (0)
     mov word [bas_pi_new_size], bas_load_buf       ; current write pos
@@ -902,6 +914,8 @@ bas_save_emit_detok:
     je .dse_lr
     cmp al, TOK_STR_LIT
     je .dse_str
+    cmp al, TOK_DATA_RAW
+    je .dse_dataraw
     cmp al, TOK_VAR_NAME
     je .dse_var
     cmp al, 0x80
@@ -999,6 +1013,30 @@ bas_save_emit_detok:
     mov al, '"'
     call bas_save_emit_byte
     jc .dse_fail
+    or  cl, 1
+    jmp .dse_loop
+
+.dse_dataraw:
+    ; TOK_DATA_RAW + len + bytes — emit raw (no quote wrap)
+    test cl, 1
+    jz .dse_dr_no_lead
+    mov al, ' '
+    call bas_save_emit_byte
+    jc .dse_fail
+.dse_dr_no_lead:
+    mov al, [si]
+    inc si
+    mov dl, al
+.dse_dr_loop:
+    test dl, dl
+    jz .dse_dr_end
+    mov al, [si]
+    inc si
+    call bas_save_emit_byte
+    jc .dse_fail
+    dec dl
+    jmp .dse_dr_loop
+.dse_dr_end:
     or  cl, 1
     jmp .dse_loop
 

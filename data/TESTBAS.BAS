@@ -1,0 +1,135 @@
+10 REM TESTBAS.BAS - MNOS16 BASIC 2.0 test menu
+20 CLS
+30 PRINT "MNOS16 BASIC 2.0 - Test Menu"
+40 PRINT "----------------------------"
+50 PRINT "  1. HELLO   - FOR/NEXT"
+60 PRINT "  2. GUESS   - INPUT + RND"
+70 PRINT "  3. STRINGS - string fns"
+80 PRINT "  4. DATA    - READ/RESTORE"
+90 PRINT "  5. DEFFN   - DEF FN"
+100 PRINT "  6. FILEIO  - OPEN/CLOSE/etc"
+110 PRINT "  7. WHILE   - WHILE/WEND"
+120 PRINT "  8. ARRAY   - DIM"
+130 PRINT "  0. QUIT"
+140 INPUT "Choice"; C
+150 IF C = 0 THEN GOTO 999
+160 ON C GOTO 1010, 2010, 3010, 4010, 5010, 6010, 7010, 8010
+170 PRINT "Invalid choice."
+180 GOTO 140
+999 PRINT "Bye."
+1000 END
+1010 REM === 1. HELLO: squares 1..10 ===
+1020 PRINT
+1030 PRINT "Squares from 1 to 10:"
+1040 FOR I = 1 TO 10
+1050 PRINT I; "squared is"; I * I
+1060 NEXT I
+1070 PRINT "Done."
+1080 INPUT "[Press ENTER]"; Z$
+1090 GOTO 20
+2010 REM === 2. GUESS: number 1..100 ===
+2020 PRINT
+2030 RANDOMIZE
+2040 LET G0 = RND(100)
+2050 LET T = 0
+2060 PRINT "I'm thinking of a number from 1 to 100."
+2070 INPUT "Your guess"; G
+2080 LET T = T + 1
+2090 IF G = G0 THEN GOTO 2200
+2100 IF G < G0 THEN PRINT "Too low."
+2110 IF G > G0 THEN PRINT "Too high."
+2120 IF T < 10 THEN GOTO 2070
+2130 PRINT "Out of guesses. It was"; G0
+2140 GOTO 2210
+2200 PRINT "Got it in"; T; "tries!"
+2210 INPUT "[Press ENTER]"; Z$
+2220 GOTO 20
+3010 REM === 3. STRINGS: vars + built-ins ===
+3020 PRINT
+3030 LET S1$ = "Hello"
+3040 LET S2$ = "World"
+3050 LET S3$ = S1$ + ", " + S2$ + "!"
+3055 PRINT "S1$=Hello S2$=World S3$=S1$+', '+S2$+'!'"
+3060 PRINT "Concat   ="; S3$;            "  | Hello, World!"
+3070 PRINT "LEN      ="; LEN(S3$);        "  | 13"
+3080 PRINT "LEFT$ 5  ="; LEFT$(S3$, 5);   "  | Hello"
+3090 PRINT "RIGHT$ 6 ="; RIGHT$(S3$, 6);  "  | World!"
+3100 PRINT "MID$ 8,5 ="; MID$(S3$, 8, 5); "  | World"
+3110 PRINT "CHR$ AB  ="; CHR$(65)+CHR$(66); "  | AB"
+3120 PRINT "STR$ -123="; STR$(-123);      "  | -123"
+3130 LET S4$ = "42abc"
+3140 PRINT "VAL 42abc="; VAL(S4$);        "  | 42"
+3150 PRINT "ASC H    ="; ASC(S1$);        "  | 72"
+3160 IF S1$ < S2$ THEN PRINT "OK: S1$ < S2$"
+3165 IF S1$ >= S2$ THEN PRINT "FAIL: S1$ >= S2$"
+3170 IF S1$ = "Hello" THEN PRINT "OK: S1$ = Hello"
+3175 IF S1$ <> "Hello" THEN PRINT "FAIL: S1$ <> Hello"
+3180 INPUT "[Press ENTER]"; Z$
+3190 GOTO 20
+4010 REM === 4. DATA / READ / RESTORE ===
+4020 PRINT
+4030 RESTORE
+4040 READ D1
+4050 READ D2
+4060 READ D5$
+4070 READ D3
+4080 PRINT "READ ="; D1; D2; D5$; D3
+4090 RESTORE
+4100 READ D4
+4110 PRINT "After RESTORE, first item ="; D4
+4120 INPUT "[Press ENTER]"; Z$
+4130 GOTO 20
+4900 DATA 10, 20, "MNOS", 30
+5010 REM === 5. DEF FN ===
+5020 PRINT
+5030 DEF FN S(X) = X * X
+5040 DEF FN A(Y) = (Y + 10) / 2
+5050 PRINT "FN S(5)       ="; FN S(5)
+5060 PRINT "FN S(12)      ="; FN S(12)
+5070 PRINT "FN A(20)      ="; FN A(20)
+5080 DEF FN S(X) = X * X * X
+5090 PRINT "FN S(5) redef ="; FN S(5)
+5100 INPUT "[Press ENTER]"; Z$
+5110 GOTO 20
+6010 REM === 6. FILE I/O: write then read back ===
+6020 PRINT
+6030 OPEN "TMP.TXT" FOR OUTPUT AS #1
+6040 FOR I = 1 TO 5
+6050 PRINT #1, I, I * I
+6060 NEXT I
+6070 CLOSE #1
+6080 PRINT "Wrote TMP.TXT. Reading back..."
+6090 OPEN "TMP.TXT" FOR INPUT AS #2
+6100 WHILE NOT EOF(2)
+6110 INPUT #2, F1, F2
+6120 PRINT "  "; F1; "squared ="; F2
+6130 WEND
+6140 CLOSE #2
+6150 PRINT "(TMP.TXT remains on disk - DEL it from the shell if needed.)"
+6160 INPUT "[Press ENTER]"; Z$
+6170 GOTO 20
+7010 REM === 7. WHILE / WEND ===
+7020 PRINT
+7030 LET K = 1
+7040 WHILE K <= 10
+7050 PRINT K;
+7060 LET K = K + 1
+7070 WEND
+7080 PRINT
+7090 PRINT "Done."
+7100 INPUT "[Press ENTER]"; Z$
+7110 GOTO 20
+8010 REM === 8. ARRAY: DIM + sum ===
+8020 PRINT
+8030 DIM Q(10)
+8040 FOR J = 0 TO 10
+8050 Q(J) = J * 2
+8060 NEXT J
+8070 LET U = 0
+8080 FOR J = 0 TO 10
+8090 U = U + Q(J)
+8100 NEXT J
+8110 PRINT "Sum of Q(0..10) where Q(J)=2*J  ="; U
+8120 PRINT "(expected 110)"
+8130 INPUT "[Press ENTER]"; Z$
+8140 GOTO 20

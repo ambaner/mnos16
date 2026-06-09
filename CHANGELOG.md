@@ -6,6 +6,242 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.9.19.0] - 2026-06-09
+
+This release lands **BASIC 2.0** plus the multi-pass runtime fixes,
+build-pipeline hardening, and the final HMA-corruption fix that the
+post-merge `TESTBAS.BAS` exercise surfaced.  Everything previously
+tracked as `v0.9.19-a..f` during development is consolidated under one
+shipping label.
+
+### Added — **BASIC 2.0** (language)
+
+A long-planned expansion of `BASIC.MNX` to the language surface of a
+period-correct microcomputer BASIC.  Older v1.x `.BAS` files continue
+to run.
+
+- **Strings as a first-class type.**  Typed expression evaluator
+  (`bas_expr_result` carries `{type, length, value}`); string variables
+  `A$`..`Z$` and `A0$`..`Z9$`; concatenation with `+`; comparison via
+  `=`, `<>`, `<`, `<=`, `>`, `>=`; full string I/O through `PRINT`,
+  `INPUT`, and `LET`.  Backed by a 2 KB HMA string-variable heap (80 B
+  slot per name → ~25 distinct string variables) plus a 32-entry HMA
+  temp-string pool flushed at every statement boundary.
+- **String built-in functions:** `LEN`, `ASC`, `VAL`, `CHR$`, `STR$`,
+  `LEFT$`, `RIGHT$`, `MID$`, `INKEY$`, `INPUT$`.
+- **`DIM` + 1-D arrays** for both numeric (`BVAR_NUM_ARRAY`) and
+  string (`BVAR_STR_ARRAY`) values.  Array storage lives in HMA via
+  `mn_alloc`, freed on `NEW` / `CLEAR` / error recovery.
+- **File I/O channels.**  `OPEN "FILE" FOR INPUT|OUTPUT|APPEND AS #n`,
+  `CLOSE [#n[,#n...]]`, `PRINT #n,`, `INPUT #n,`, `EOF(n)`.  Four
+  channels (`#1..#4`), each with a 4 KB HMA buffer.  `OUTPUT` /
+  `APPEND` channels flush atomically via `mn_replace_file` on `CLOSE`;
+  any error closes all channels with the buffer discarded.
+- **`DATA` / `READ` / `RESTORE`.**  Dedicated `TOK_DATA_RAW` (= 0xF4)
+  payload keeps the inline DATA text as raw bytes (quote-aware, with
+  `:`-inside-quotes preserved) so `LIST` and `SAVE` round-trip the
+  source verbatim.  `RESTORE` accepts an optional starting line.
+- **`DEF FN name(param) = expr`** with `FN name(arg)` in expressions.
+  Up to 16 single-argument numeric user functions; recursion rejected
+  with `Too complex`.
+- **`WHILE` / `WEND`** now actually run (tokens existed in v1.x but the
+  dispatcher returned `Syntax error`).
+
+### Fixed — **BASIC 2.0 runtime correctness pass**
+
+The first end-to-end run of `TESTBAS.BAS` surfaced six low-level
+state-hygiene bugs in the runtime that the unit suite couldn't see
+(all flag- or scratch-slot interactions that only manifest across
+multiple statements).  All six are fixed:
+
+1. **`bas_expr_eval` epilogue leaked CF.**  Final `cmp` against
+   `BVAR_STRING` left CF=1 on success path → callers that did
+   `call bas_expr_eval; jc ...` spuriously branched to error.
+   Fixed with explicit `clc` (`basic_expr.inc` `.bee_clear_cf`).
+2. **`.be_cmp_emit` dispatcher clobbered comparison flags** between
+   `cmp dx, cx` and the consuming `j*c`/`j*g`.  Fixed with
+   `pushf`/`popf` around the dispatch (`basic_expr.inc`).
+3. **`bas_lex_after_emit` mode-1 reset broke multi-line-ref lists.**
+   `ON expr GOTO 1010, 2010, 3010` lost 2010/3010 as `TOK_LINEREF`.
+   Added mode 4 ("multi-ref list") that persists across commas
+   (`basic_lex.inc`).
+4. **`bas_stmt_read` aliased `bas_scratch_d`** (owned by
+   `bas_run_program_from_cur`'s next-line offset).  Re-routed READ
+   through `bas_scratch_b`; annotated `bas_scratch_d` `;@owner ...`
+   (`basic_dataread.inc`, `basic_data.inc`).
+5. **`bas_str_to_fname` success path had an extra `pop ds`** (7
+   pushes, 8 pops on success), making `ret` jump to whatever AX
+   happened to be — OPEN silently hung.  Removed the extraneous pop
+   (`basic_io.inc`).
+6. **`EOF(N)` dispatch ate an already-consumed `(`**, breaking every
+   `WHILE NOT EOF(n)` loop.  Removed redundant `(` check; matches the
+   LEFT$ convention (`basic_expr.inc`).
+
+### Fixed — **`bas_str_concat` stack-frame off-by-one (HMA corruption)**
+
+The function's prologue is:
+
+```nasm
+bas_str_concat:
+    push si        ; saved SI → [bp+4]   (LHS desc ptr)
+    push di        ; saved DI → [bp+2]   (RHS desc ptr)
+    push bp        ; saved BP → [bp+0]
+    mov  bp, sp
+```
+
+After the prologue the return IP sits at `[bp+6]`, the saved SI at
+`[bp+4]`, and the saved DI at `[bp+2]`.  The first BASIC 2.0 build
+reloaded the LHS from `[bp+6]` (the return address!) and the RHS from
+`[bp+4]` (the LHS slot), one word off in both places.
+
+For a three-way concat like `LET S3$ = S1$ + ", " + S2$ + "!"` the
+third concat sized its temp at LLen+RLen = 12+1 = 13 bytes, but the
+"RHS" copy used the LHS descriptor's length (12) instead of 1, writing
+12 bytes starting at `dst + LLen = 0x840` and straddling `0x842..0x84B`
+— directly through the MCB header of the trailing free block.
+`mm_free`'s forward-coalesce check then saw a zero size word or a
+non-`'M'` magic byte and skipped the merge, stranding ~63 KB of HMA
+behind a broken header.
+
+Visible symptom: `TESTBAS.BAS` test 6 (FILEIO) `?Out of memory in 6030`
+after running tests 1-5 (`bas_chan_alloc` couldn't find 4 KB).
+
+**Fix** (`src/programs/basic/basic_str.inc`): LHS reload `mov si,
+[bp+4]`, RHS reload `mov si, [bp+2]`.  Comments rewritten.
+`bas_str_cmp_desc` has the same prologue but is safe because it
+consumes live SI/DI immediately.  Backstopped by
+`tests/test_basic_hma_concat_regressions.py` (two static regex guards
+that fail the build if the offsets ever regress).
+
+### Added — **build-pipeline structural prevention**
+
+To make the above classes catchable at build time:
+
+#### `tools/asm_lint.py` — static asm linter (new)
+
+Walks `src/programs/basic/*.{asm,inc}`, carves each `bas_*:` function
+body, and runs three checkers.  Invoked from `tools/build.ps1`
+immediately after NASM-path discovery; any violation aborts the build
+before a byte of code is assembled.  Also exposed as a pytest case
+(`tests/test_asm_lint.py`).
+
+1. **Stack-balance check.**  Models `push`/`pop`/`pushf`/`popf`/
+   `pusha`/`popa`/`add sp,N`/`sub sp,N`/`enter`/`leave` plus the
+   `mov bp,sp`/`mov sp,bp` frame-pointer idiom.  Fails if any `ret`
+   leaves the function with non-zero stack depth, if a local label is
+   reached from two paths with different depths (bug #5 shape), or if
+   a basic block goes negative.  Functions can opt out per-label with
+   `;@stack-merge` or whole-function with `;@no-stack-check`.
+   `;@noreturn` tells the checker that callers' fall-through is dead.
+2. **Scratch-slot ownership check.**  Reads `;@owner FUNC` /
+   `;@reserved FUNC` annotations on BSS declarations and fails any
+   other function that writes the slot (bug #4 shape).
+3. **Carry-flag discipline check.**  Functions annotated `;@returns
+   cf` opt into a "no flag-poisoner immediately before bare ret"
+   rule (bug #1 shape).
+
+#### `src/programs/basic/basic_macros.inc` — convention macros (new)
+
+| Macro                  | Expands to                  | Purpose                                                              |
+| ---------------------- | --------------------------- | -------------------------------------------------------------------- |
+| `BAS_RET_OK`           | `clc / ret`                 | success exit — impossible to forget the clear (bug #1).              |
+| `BAS_RET_ERR <code>`   | `mov al, code / stc / ret`  | error exit with code.                                                |
+| `BAS_RET_ERR_NOCODE`   | `stc / ret`                 | error exit when AL is already populated.                             |
+| `BAS_DISPATCH_BEGIN`   | `pushf`                     | entry to a dispatcher chain that must preserve incoming flags.       |
+| `BAS_DISPATCH_END`     | `popf`                      | per-leaf exit of such a chain.                                       |
+
+Header-guarded with `BASIC_MACROS_INC`; included from `basic.asm`
+immediately after `basic_data.inc`.  The lint's RET / CF-setter
+recognizers know about these tokens.
+
+### Added — **permanent HMA-diag instrumentation in `basic.mnx`**
+
+- `basic_stmt.inc` `.brd_next_stmt`: conditional `mn_avail` dump
+  (`BAS:diag.heap-largest / total / cur_line`) whenever the free total
+  shifts by ≥ 256 B vs the previous statement.
+- `basic_io.inc` `bas_chan_alloc`: pre-`mn_alloc` dump
+  (`BAS:diag.chan-largest / total / want`) so any OPEN failure tells
+  you how fragmented the heap was at the moment.
+
+Both call sites use `mn_dbg_hex16`, whose kernel-level syscall handler
+is `%ifdef DEBUG`-gated — output only appears under KERNELD.  Cost in
+release `basic.mnx`: a handful of `int 0x80` cycles per statement and
+~80 B of code; `basic.mnx` is still 35/35 sectors.  The
+`bas_dbg_last_avail` BSS slot at `0xC452` is carved from the prior
+`bas_str_lhs` headroom (12 B remaining).
+
+### Added — infrastructure & tests
+
+- `doc/BASIC.md` rewritten for v2.0: full statement/function tables,
+  examples for file I/O and DATA/READ, DEF FN semantics, updated error
+  table, internal-module map.
+- **Tier-0 structural regression tests** under `tests/` — pure static,
+  no QEMU:
+  - `test_basic_strings.py` — string keyword/function wiring
+  - `test_basic_arrays.py` — DIM dispatch + array module
+  - `test_basic_fileio.py` — channel keywords/dispatchers/hash variants
+  - `test_basic_data_read.py` — DATA/READ/RESTORE wiring + `TOK_DATA_RAW`
+  - `test_basic_def_fn.py` — DEF SEG vs DEF FN dispatch + TOK_FN in primary
+  - `test_basic_runtime_regressions.py` — guards for the 6 runtime bugs
+  - `test_basic_hma_concat_regressions.py` — guards for the `bas_str_concat` BP offsets
+  - `test_basic_load_buf_headroom.py` — code/BSS/load_buf/prog_base headroom invariants
+  - `test_asm_lint.py` — runs the asm-lint pass on `src/programs/basic`
+
+### Changed
+
+- BSS layout: `BAS_MAX_LINES` 256→192 and `BAS_MAX_VARS` 128→96 to
+  free 768 B of code space; `BSS_BASE` shifted from 0xAC00 to 0xAEC0,
+  later to 0xC400 with `BAS_BSS_SIZE = 0x1000` after the BSS/code
+  overlap fix.  The previously reserved 0xBDC0..0xBFFF region now
+  holds `bas_expr_result`, the string-heap descriptor, `bas_data_*`
+  cursor, `bas_userfn_*` table.
+- `bas_cmd_clear` (called by `NEW` and `CLEAR`) closes every open
+  channel, walks the var table to free array + string-heap
+  allocations, rewinds the DATA cursor, and empties the DEF FN table.
+- `basic.mnx` size budget raised from **21 → 35 sectors** to fit the
+  new feature set (current: 35 sectors).
+- `data/TESTBAS.BAS` option 3 (STRINGS) is now self-verifying — each
+  expected value is printed inline via `| <expected>` annotations.
+
+### Removed
+
+- Temporary debug instrumentation from the bug-hunt phase
+  (`bsp_dbg_enter` / `bsp_dbg_preE` / `bsp_dbg_postE` /
+  `bee_dbg_pre` / `bee_dbg_post`).  Replaced by the permanent
+  `.brd_next_stmt` dump (debug builds only, COM1).
+
+### Internal
+
+- New source modules under `src/programs/basic/`: `basic_str.inc`,
+  `basic_array.inc`, `basic_io.inc`, `basic_dataread.inc`,
+  `basic_defn.inc`, `basic_macros.inc`.  `basic.asm` `%include`
+  order is now var → str → array → io → dataread → defn → expr →
+  stmt (the dependency chain required for primary to call
+  `bas_userfn_invoke`).
+- **LOAD-buffer overlap fix.**  The 4 KB conventional-memory scratch
+  buffer for `LOAD`/`SAVE`/file-channel I/O lived at TPA offset
+  0xC000.  When v2.0 BASIC grew past 0xC000, every `LOAD` overwrote
+  the tail of BASIC's own code.  Moved `bas_load_buf` 0xC000 → 0xD400
+  and `BAS_PROG_BASE` 0xD000 → 0xE400.
+- **BSS / code overlap fix.**  `BAS_BSS_BASE` had been 0xB000 since
+  v1.x — inside the code segment.  Moved to 0xC400 with
+  `BAS_BSS_SIZE = 0x1000`; updated `bas_init` to zero a fixed 4 KB
+  region.  NASM build-time assertion (`times (BAS_BSS_BASE - 0x8000)
+  - ($-$$) db 0`) at the bottom of `basic.asm` fails the build with
+  "TIMES value is negative" on overflow.
+- **Stale-BSS-address fix.**  Five DEF FN frame `equ`s
+  (`bas_userfn_depth`, `bas_userfn_saved_si/ex_top/pval/pname`) were
+  still pointing at 0xBC60..0xBC68 after the BSS shift — inside the
+  code segment.  Moved to 0xD060..0xD06A.  Backstopped by a new
+  regression test that scans every `*.inc`/`*.asm` for any `equ` in
+  the pre-fix BSS window (0xB000..0xC3FF).
+
+### Test results
+
+- **338 unit tests** pass.
+- `TESTBAS.BAS` tests 1–8 all complete without OOM.
+- `basic.mnx` 35/35 sectors.
+
 ## [0.9.18] - 2026-06-04
 
 ### Added

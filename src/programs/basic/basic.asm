@@ -34,6 +34,7 @@
 [ORG RELOC_BASE]
 
 %include "basic_data.inc"
+%include "basic_macros.inc"
 
 ; =============================================================================
 ; ENTRY POINT (offset 6 — preceded by MNEX magic in the linker)
@@ -48,8 +49,20 @@ entry:
     mov si, bas_banner
     call bas_puts_nul
 
+    ; DEBUG: trace entry waypoints so a hang between banner and prompt
+    ; can be localized via serial output.
+    mov dx, 0xE001
+    xor bx, bx
+    call mn_dbg_hex16
+
     ; If we got a filename arg, attempt to LOAD it first
     call mn_get_argc
+
+    mov dh, 0xE0
+    mov dl, cl
+    xor bx, bx
+    call mn_dbg_hex16
+
     cmp cl, 0
     je .no_arg
     xor cl, cl                      ; argv[0]
@@ -86,13 +99,25 @@ entry:
 
 .no_arg:
     ; --- REPL loop --------------------------------------------------------
+    mov dx, 0xE002
+    xor bx, bx
+    call mn_dbg_hex16
     ; bas_repl_resume is the longjmp target for bas_error.
 bas_repl_resume:
     mov [bas_repl_sp], sp           ; record SP for longjmp recovery
     mov byte [bas_in_run], 0
+    mov dx, 0xE003
+    xor bx, bx
+    call mn_dbg_hex16
 .repl_loop:
+    mov dx, 0xE004
+    xor bx, bx
+    call mn_dbg_hex16
     mov si, bas_prompt_ok
     call bas_puts_nul
+    mov dx, 0xE005
+    xor bx, bx
+    call mn_dbg_hex16
     call bas_readline               ; DS:SI = line, AX = length
     ; Empty line? Just re-prompt.
     test ax, ax
@@ -109,11 +134,12 @@ bas_init:
     push cx
     push di
     push es
-    ; Zero BSS scalars + tables
+    ; Zero BSS scalars + tables (BSS lives at BAS_BSS_BASE..+BAS_BSS_SIZE,
+    ; fully disjoint from the code segment — see basic_data.inc memory map).
     mov ax, ds
     mov es, ax
     mov di, BAS_BSS_BASE
-    mov cx, 0xC000 - BAS_BSS_BASE   ; bytes to zero
+    mov cx, BAS_BSS_SIZE
     xor ax, ax
     cld
     rep stosb
@@ -133,7 +159,7 @@ bas_init:
 ; Banner / prompt strings
 ; =============================================================================
 bas_banner:
-    db 'MNOS16 BASIC 1.0',13,10
+    db 'MNOS16 BASIC 2.0',13,10
     db 'Type HELP for commands, SYSTEM to exit.',13,10,0
 bas_prompt_ok:
     db 'Ok',13,10,0
@@ -148,6 +174,31 @@ bas_prompt_ok:
 %include "basic_edit.inc"
 %include "basic_load.inc"
 %include "basic_var.inc"
+%include "basic_str.inc"
+%include "basic_array.inc"
+%include "basic_io.inc"
+%include "basic_dataread.inc"
+%include "basic_defn.inc"
 %include "basic_expr.inc"
 %include "basic_stmt.inc"
 %include "mnoslib.inc"
+
+; =============================================================================
+; Build-time guard: code+data must not overflow into BSS or LOAD scratch.
+;
+; If this fires ("TIMES value is negative"), BASIC.MNX has grown past the
+; reserved code budget at BAS_BSS_BASE.  Remediation: shrink BASIC (move
+; tables to HMA, remove dead code, factor strings) or bump BAS_BSS_BASE
+; higher (which shrinks BAS_PROG_LIMIT).
+;
+; This uses a TIMES expression — NASM evaluates label arithmetic for TIMES
+; at assemble time and fails with "TIMES value is negative" on overflow.
+; (The %if directive cannot evaluate `$` / `$$` and silently no-ops here.)
+;
+; Side effect: the binary is padded with zeros up to BAS_BSS_BASE - 0x8000
+; so basic.mnx has a deterministic code budget.  Cost: at most ~1 KB of
+; zero-fill at the end of the file (rounded up to the next 512 B sector).
+; Benefit: a hard, mechanically-checked invariant that BSS / LOAD_BUF /
+; PROG_BUF can never be overlapped by growing code.
+; =============================================================================
+times (BAS_BSS_BASE - 0x8000) - ($ - $$) db 0

@@ -19,3 +19,6 @@ tests/harness/constants.py
 coverage/
 .pytest_cache/
 __pycache__/
+
+# Build-phase scratch (asm-lint, code-gen)
+*.tmp

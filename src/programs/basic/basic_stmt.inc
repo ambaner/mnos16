@@ -38,6 +38,18 @@
 ; =============================================================================
 ; bas_run_direct — execute tokenized line at DS:SI
 ; =============================================================================
+
+; Permanent debug-trace tags (visible on COM1 when running under KERNELD).
+brd_dbg_tok1: db 'BAS:tok+0',0
+brd_dbg_tok2: db 'BAS:tok+2',0
+brd_dbg_syn:  db 'BAS: SYNTAX (dispatch fall-through)',0
+brd_dbg_files: db 'BAS: cmd FILES',0
+brd_dbg_list: db 'BAS: cmd LIST',0
+brd_dbg_sys:  db 'BAS: cmd SYSTEM',0
+brd_dbg_avail_lg: db 'BAS:diag.heap-largest ',0
+brd_dbg_avail_tt: db 'BAS:diag.heap-total   ',0
+brd_dbg_avail_ln: db 'BAS:diag.heap-cur_line',0
+
 bas_run_direct:
     push bp
     push bx
@@ -46,6 +58,57 @@ bas_run_direct:
     push si
     push di
 .brd_next_stmt:
+    ; Release any HMA-temp strings held over from the prior statement.
+    call bas_temp_pool_free_all
+    ; --- Permanent diag: dump heap avail when total shifts by >= 256B.        --
+    ; In release builds the mn_dbg_hex16 syscalls are no-ops at the kernel
+    ; level; under KERNELD they print to COM1 — invaluable for tracking
+    ; heap-fragmentation regressions per BASIC statement.
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    call mn_avail                       ; AX=largest, DX=total
+    mov cx, dx
+    sub cx, [bas_dbg_last_avail]
+    jnc .brd_dlt_pos
+    neg cx
+.brd_dlt_pos:
+    cmp cx, 0x0100
+    jb  .brd_dbg_skip
+    push dx                             ; save total
+    mov dx, ax
+    mov bx, brd_dbg_avail_lg
+    call mn_dbg_hex16
+    pop dx
+    mov [bas_dbg_last_avail], dx        ; remember new total
+    mov bx, brd_dbg_avail_tt
+    call mn_dbg_hex16
+    mov dx, [bas_cur_line]
+    mov bx, brd_dbg_avail_ln
+    call mn_dbg_hex16
+.brd_dbg_skip:
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ; --- Permanent diag: dump first 4 token bytes at dispatch entry --------
+    push ax
+    push bx
+    push dx
+    push si
+    mov dx, [si]
+    mov bx, brd_dbg_tok1
+    call mn_dbg_hex16
+    mov dx, [si+2]
+    mov bx, brd_dbg_tok2
+    call mn_dbg_hex16
+    pop si
+    pop dx
+    pop bx
+    pop ax
     ; Skip leading TOK_EOL / colons (empty statement)
     mov al, [si]
     cmp al, ':'
@@ -117,6 +180,18 @@ bas_run_direct:
     je .brd_def
     cmp al, TOK_RANDOMIZE
     je .brd_random
+    cmp al, TOK_DIM
+    je .brd_dim
+    cmp al, TOK_OPEN
+    je .brd_open
+    cmp al, TOK_CLOSE
+    je .brd_close
+    cmp al, TOK_DATA
+    je .brd_data
+    cmp al, TOK_READ
+    je .brd_read
+    cmp al, TOK_RESTORE
+    je .brd_restore
     jmp .brd_syntax
 .brd_let_implicit:
     dec si                          ; back up so LET handler re-reads var name
@@ -180,11 +255,35 @@ bas_run_direct:
     jc .brd_propagate
     jmp .brd_eat_to_sep
 .brd_def:
-    call bas_stmt_def_seg
+    call bas_stmt_def
     jc .brd_propagate
     jmp .brd_eat_to_sep
 .brd_random:
     call bas_stmt_randomize
+    jc .brd_propagate
+    jmp .brd_eat_to_sep
+.brd_dim:
+    call bas_stmt_dim
+    jc .brd_propagate
+    jmp .brd_eat_to_sep
+.brd_open:
+    call bas_stmt_open
+    jc .brd_propagate
+    jmp .brd_eat_to_sep
+.brd_close:
+    call bas_stmt_close
+    jc .brd_propagate
+    jmp .brd_eat_to_sep
+.brd_data:
+    call bas_stmt_data
+    jc .brd_propagate
+    jmp .brd_eat_to_sep
+.brd_read:
+    call bas_stmt_read
+    jc .brd_propagate
+    jmp .brd_eat_to_sep
+.brd_restore:
+    call bas_stmt_restore
     jc .brd_propagate
     jmp .brd_eat_to_sep
 .brd_skip:
@@ -225,6 +324,15 @@ bas_run_direct:
 
 ; --- SYSTEM (exit interpreter) -------------------------------------------
 .brd_system:
+    push ax
+    push bx
+    push si
+    mov si, brd_dbg_sys
+    xor bx, bx
+    call mn_dbg_print
+    pop si
+    pop bx
+    pop ax
     xor al, al
     call mn_exit
     ; Should not return; fall through anyway
@@ -232,6 +340,15 @@ bas_run_direct:
 
 ; --- LIST -----------------------------------------------------------------
 .brd_list:
+    push ax
+    push bx
+    push si
+    mov si, brd_dbg_list
+    xor bx, bx
+    call mn_dbg_print
+    pop si
+    pop bx
+    pop ax
     call bas_stmt_list
     jmp .brd_eat_to_sep
 
@@ -246,6 +363,15 @@ bas_run_direct:
 
 ; --- FILES ---------------------------------------------------------------
 .brd_files:
+    push ax
+    push bx
+    push si
+    mov si, brd_dbg_files
+    xor bx, bx
+    call mn_dbg_print
+    pop si
+    pop bx
+    pop ax
     call bas_cmd_files
     jmp .brd_eat_to_sep
 
@@ -290,6 +416,15 @@ bas_run_direct:
 
 ; --- Syntax error → longjmp via bas_error --------------------------------
 .brd_syntax:
+    push ax
+    push bx
+    push si
+    mov si, brd_dbg_syn
+    xor bx, bx
+    call mn_dbg_print
+    pop si
+    pop bx
+    pop ax
     mov al, BERR_SYNTAX
     call bas_error                  ; never returns
 
@@ -310,6 +445,8 @@ bas_run_direct:
     cmp al, TOK_LINEREF
     je .brd_skip_2
     cmp al, TOK_STR_LIT
+    je .brd_skip_str
+    cmp al, TOK_DATA_RAW
     je .brd_skip_str
     cmp al, TOK_VAR_NAME
     je .brd_skip_2
@@ -338,6 +475,8 @@ bas_run_direct:
     cmp al, TOK_LINEREF
     je .brd_ca_2
     cmp al, TOK_STR_LIT
+    je .brd_ca_str
+    cmp al, TOK_DATA_RAW
     je .brd_ca_str
     cmp al, TOK_VAR_NAME
     je .brd_ca_2
@@ -453,6 +592,13 @@ bas_stmt_print:
     push cx
     push dx
     push si
+    ; PRINT # → route to channel
+    cmp byte [si], '#'
+    jne .bsp_no_hash
+    call bas_stmt_print_hash
+    jc .bsp_fail
+    jmp .bsp_done
+.bsp_no_hash:
     mov cx, 1                       ; CX bit0 = need CRLF at end
 .bsp_loop:
     mov al, [si]
@@ -464,13 +610,12 @@ bas_stmt_print:
     je .bsp_sep_semi
     cmp al, ','
     je .bsp_sep_comma
-    cmp al, TOK_STR_LIT
-    je .bsp_str
-    ; Anything else: evaluate as expression
+    ; Anything else: evaluate as expression (numeric OR string)
     call bas_expr_eval
     jc .bsp_fail
-    ; Print signed integer + trailing space (GW PRINT prints leading space
-    ; for positive numbers and trailing space; we just trailing-space).
+    cmp byte [bas_expr_result + BES_TYPE], BVAR_STRING
+    je .bsp_print_str
+    ; Numeric — leading sign + digits + trailing space (GW-BASIC behaviour).
     push dx
     test dx, dx
     jns .bsp_pos
@@ -488,6 +633,13 @@ bas_stmt_print:
     call bas_lex_putc
     mov cx, 1
     jmp .bsp_loop
+.bsp_print_str:
+    push si
+    mov si, bas_expr_result
+    call bas_str_print_desc
+    pop si
+    mov cx, 1
+    jmp .bsp_loop
 
 .bsp_sep_semi:
     inc si
@@ -497,22 +649,6 @@ bas_stmt_print:
     inc si
     mov cx, 0
     call .bsp_tab_to_zone
-    jmp .bsp_loop
-.bsp_str:
-    inc si
-    mov al, [si]
-    inc si
-    mov dl, al                      ; length
-.bsp_str_loop:
-    test dl, dl
-    jz .bsp_after
-    mov al, [si]
-    inc si
-    call bas_lex_putc
-    dec dl
-    jmp .bsp_str_loop
-.bsp_after:
-    mov cx, 1
     jmp .bsp_loop
 .bsp_finish:
     test cx, cx
@@ -631,25 +767,94 @@ bas_stmt_let:
     add si, 2
     ; Save name for later assign
     mov [bas_scratch_b], ax
+    ; Array store?  LET name(idx) = expr
+    cmp byte [si], '('
+    je .bsl_array
     ; Expect '='
     mov bl, [si]
     cmp bl, '='
     jne .bsl_syn
     inc si
-    ; String variable assignment not supported in v1 expressions
+    ; Eval RHS — string or numeric, depending on LHS type tag (bit 7).
     test al, 0x80
-    jnz .bsl_typestr
-    ; Eval expression
-    call bas_expr_eval
+    jnz .bsl_str
+    ; Numeric assignment
+    call bas_expr_eval_int
     jc .bsl_propagate
-    ; Assign DX into variable
     mov ax, [bas_scratch_b]
     call bas_var_set_int
     jc .bsl_propagate
+    jmp .bsl_done
+.bsl_str:
+    call bas_expr_eval
+    jc .bsl_propagate
+    cmp byte [bas_expr_result + BES_TYPE], BVAR_STRING
+    jne .bsl_typemix
+    mov ax, [bas_scratch_b]
+    call bas_var_set_str
+    jc .bsl_propagate
+.bsl_done:
     pop dx
     pop cx
     pop bx
     clc
+    ret
+.bsl_array:
+    ; Find the var; must be an array of matching kind
+    mov ax, [bas_scratch_b]
+    call bas_var_find
+    jc .bsl_undim
+    test al, 0x80
+    jnz .bsl_arr_chk_str
+    cmp byte [bx + BVR_TYPE], BVAR_NUM_ARRAY
+    jne .bsl_undim
+    jmp .bsl_arr_index
+.bsl_arr_chk_str:
+    cmp byte [bx + BVR_TYPE], BVAR_STR_ARRAY
+    jne .bsl_undim
+.bsl_arr_index:
+    push bx                         ; save var rec ptr
+    inc si                          ; past '('
+    call bas_expr_eval_int          ; DX = index
+    pop bx
+    jc .bsl_propagate
+    cmp byte [si], ')'
+    jne .bsl_syn
+    inc si
+    mov [bas_scratch_c], dx         ; save index
+    cmp byte [si], '='
+    jne .bsl_syn
+    inc si
+    ; Branch by element type
+    mov al, [bx + BVR_TYPE]
+    cmp al, BVAR_NUM_ARRAY
+    je .bsl_arr_num_eval
+    ; String element
+    push bx
+    call bas_expr_eval
+    pop bx
+    jc .bsl_propagate
+    cmp byte [bas_expr_result + BES_TYPE], BVAR_STRING
+    jne .bsl_typemix
+    mov cx, [bas_scratch_c]
+    call bas_array_set_str
+    jc .bsl_propagate
+    jmp .bsl_done
+.bsl_arr_num_eval:
+    push bx
+    call bas_expr_eval_int
+    pop bx
+    jc .bsl_propagate
+    mov cx, [bas_scratch_c]
+    call bas_array_set_num
+    jc .bsl_propagate
+    jmp .bsl_done
+.bsl_undim:
+    pop dx
+    pop cx
+    pop bx
+    mov al, BERR_UNDIM
+    stc
     ret
 .bsl_syn:
     pop dx
@@ -658,7 +863,7 @@ bas_stmt_let:
     mov al, BERR_SYNTAX
     stc
     ret
-.bsl_typestr:
+.bsl_typemix:
     pop dx
     pop cx
     pop bx
@@ -1494,6 +1699,25 @@ bas_stmt_input:
     push cx
     push dx
     push di
+    ; INPUT # → route to channel
+    cmp byte [si], '#'
+    jne .bsi2_no_hash
+    call bas_stmt_input_hash
+    jc .bsi2_fail_pop
+    pop di
+    pop dx
+    pop cx
+    pop bx
+    clc
+    ret
+.bsi2_fail_pop:
+    pop di
+    pop dx
+    pop cx
+    pop bx
+    stc
+    ret
+.bsi2_no_hash:
     ; Optional prompt string + ';' or ','
     mov al, [si]
     cmp al, TOK_STR_LIT
@@ -1534,19 +1758,59 @@ bas_stmt_input:
     mov al, [si]
     mov ah, [si+1]
     add si, 2
-    ; v1: numeric only
+    ; v2: numeric OR string ($-suffixed)
     test al, 0x80
-    jnz .bsi2_type
+    jnz .bsi2_str
     mov [bas_scratch_b], ax         ; save var name
     ; Read a line
+    push si
     call bas_readline               ; fills bas_line_buf
     call bas_crlf
     ; Parse signed integer from buffer
     mov si, bas_line_buf
     call bas_parse_int              ; → DX = value, CF=1 on error
+    pop si
     jc .bsi2_inpterr
     mov ax, [bas_scratch_b]
     call bas_var_set_int
+    jc .bsi2_prop
+    pop di
+    pop dx
+    pop cx
+    pop bx
+    clc
+    ret
+.bsi2_str:
+    mov [bas_scratch_b], ax         ; save var name
+    push si
+    call bas_readline               ; fills bas_line_buf (NUL-terminated)
+    call bas_crlf
+    pop si
+    ; Measure line length (up to first 0 byte) — cap at BAS_STR_VAR_LEN.
+    push si
+    push di
+    mov di, bas_line_buf
+    xor cx, cx
+.bsi2_str_lenloop:
+    cmp byte [di], 0
+    je .bsi2_str_lendone
+    inc di
+    inc cx
+    cmp cx, BAS_STR_VAR_LEN
+    jae .bsi2_str_lendone
+    jmp .bsi2_str_lenloop
+.bsi2_str_lendone:
+    pop di
+    pop si
+    ; Build a literal descriptor pointing at bas_line_buf and assign.
+    mov ax, ds
+    mov [bas_expr_result + BES_VAL_LO], ax
+    mov word [bas_expr_result + BES_VAL_HI], bas_line_buf
+    mov [bas_expr_result + BES_LEN], cx
+    mov byte [bas_expr_result + BES_TYPE], BVAR_STRING
+    mov byte [bas_expr_result + BES_FLAGS], BSTR_LITERAL
+    mov ax, [bas_scratch_b]
+    call bas_var_set_str            ; copies bytes into the var's slot
     jc .bsi2_prop
     pop di
     pop dx

@@ -64,6 +64,7 @@ bas_err_table:
     dw bas_err_badln    ; 33
     dw bas_err_noprog   ; 34
     dw bas_err_intern   ; 35
+    dw bas_err_outdata  ; 36
 
 bas_err_unk:      db 'Internal',0
 bas_err_syn:      db 'Syntax',0
@@ -101,12 +102,14 @@ bas_err_linelong: db 'Line too long',0
 bas_err_badln:    db 'Bad line number',0
 bas_err_noprog:   db 'No program',0
 bas_err_intern:   db 'Internal',0
+bas_err_outdata:  db 'Out of DATA',0
 
 
 ; =============================================================================
 ; bas_error — central error path; NEVER RETURNS.
 ;
 ; In: AL = BERR_* code
+; @noreturn  — never returns to caller; longjmps via bas_err_recover_sp
 ; =============================================================================
 bas_error:
     push ax                         ; save error code on stack temporarily
@@ -127,6 +130,8 @@ bas_error:
 
     ; --- 2. Free temp string pool --------------------------------------
     call bas_temp_pool_free_all
+    ; Clear DEF FN recursion guard so a future call works after error.
+    mov byte [bas_userfn_depth], 0
 
     ; --- 3. Reset stacks ------------------------------------------------
     xor ax, ax

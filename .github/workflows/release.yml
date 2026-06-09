@@ -43,6 +43,10 @@ jobs:
         Copy-Item "build\boot\edit.mnx"      "$stagingDir\distro\mbr\"
         Copy-Item "build\boot\mnmon.mnx"     "$stagingDir\distro\mbr\"
         Copy-Item "build\boot\sysinfo.mnx"   "$stagingDir\distro\mbr\"
+        Copy-Item "build\boot\basic.mnx"     "$stagingDir\distro\mbr\"
+        if (Test-Path "data\TESTBAS.BAS") {
+            Copy-Item "data\TESTBAS.BAS"     "$stagingDir\distro\mbr\"
+        }
         Copy-Item "build\boot\MNOS16.vhd"    "$stagingDir\vhd\"
         Copy-Item "tools\setup-vm.ps1"        "$stagingDir\setup-vm\"
         Copy-Item "tools\create-vhd.ps1"      "$stagingDir\tools\"
@@ -71,23 +75,26 @@ jobs:
         which loads FS.SYS (filesystem), MM.SYS (memory manager), and
         SHELL.SYS (interactive shell).
         Commands: mem, ver, help, cls, dir, copy, del, ren, reboot.
-        User programs: sysinfo, edit (text editor), mnmon (machine monitor).
+        User programs: sysinfo, edit (text editor), mnmon (machine monitor),
+        basic (line-numbered BASIC interpreter, GW-BASIC-style).
 
         CONTENTS
         --------
-        distro\mbr\mbr.bin      Raw 512-byte MBR boot sector
-        distro\mbr\vbr.bin      Raw VBR binary (2 sectors / 1 KB)
-        distro\mbr\loader.sys   LOADER.SYS (3 sectors)
-        distro\mbr\fs.sys       FS.SYS (5 sectors)
-        distro\mbr\kernel.sys   KERNEL.SYS (8 sectors)
-        distro\mbr\shell.sys    SHELL.SYS (13 sectors)
-        distro\mbr\mm.sys       MM.SYS (2 sectors)
-        distro\mbr\edit.mnx     EDIT.MNX — full-screen text editor
-        distro\mbr\mnmon.mnx    MNMON.MNX — interactive machine monitor
-        distro\mbr\sysinfo.mnx  SYSINFO.MNX — system information (5 pages)
-        vhd\MNOS16.vhd        16 MB fixed VHD — ready to boot in Hyper-V
-        setup-vm\             Scripts to create/update a Hyper-V VM
-        tools\                VHD creation tools (if you rebuild from source)
+        distro\mbr\mbr.bin       Raw 512-byte MBR boot sector
+        distro\mbr\vbr.bin       Raw VBR binary (2 sectors / 1 KB)
+        distro\mbr\loader.sys    LOADER.SYS (3 sectors)
+        distro\mbr\fs.sys        FS.SYS (6 sectors)
+        distro\mbr\kernel.sys    KERNEL.SYS (8 sectors)
+        distro\mbr\shell.sys     SHELL.SYS (15 sectors)
+        distro\mbr\mm.sys        MM.SYS (2 sectors)
+        distro\mbr\edit.mnx      EDIT.MNX — full-screen text editor
+        distro\mbr\mnmon.mnx     MNMON.MNX — interactive machine monitor
+        distro\mbr\sysinfo.mnx   SYSINFO.MNX — system information (5 pages)
+        distro\mbr\basic.mnx     BASIC.MNX — line-numbered BASIC v2.0
+        distro\mbr\TESTBAS.BAS   Sample BASIC program (smoke-test menu, runs under BASIC)
+        vhd\MNOS16.vhd           16 MB fixed VHD — ready to boot in Hyper-V
+        setup-vm\                Scripts to create/update a Hyper-V VM
+        tools\                   VHD creation tools (if you rebuild from source)
 
         QUICK START
         -----------

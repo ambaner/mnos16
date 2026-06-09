@@ -228,7 +228,7 @@ bas_handle_input_line:
     ; never returns
 .bhil_insert_error:
     call bas_error
-.bhil_badln:
+.bhil_badln:                            ; @stack-merge — all paths terminate via bas_error (noreturn); SP reset by err_recover
     mov al, BERR_BADLINENUM
     call bas_error
 .bhil_ret:

@@ -28,7 +28,9 @@ Thanks for your interest in contributing! This is an educational project buildin
    ```cmd
    build.bat
    ```
-   Verify the VHD boots correctly in Hyper-V.
+   The build runs the asm-lint pass on `src/programs/basic/` and the full
+   unit-test suite (~338 tests) by default. Verify the VHD also boots
+   correctly in Hyper-V — `setup-vm.bat` updates the VM image in-place.
 5. **Commit** with a clear, descriptive message:
    ```
    Add second-stage bootloader with disk read
@@ -61,8 +63,18 @@ Thanks for your interest in contributing! This is an educational project buildin
 
 1. Add source files to the appropriate `src/` subdirectory.
 2. Update `tools/build.ps1` to include the new file in the build.
-3. Update `doc/DESIGN.md` with architecture changes.
+3. Update `doc/DESIGN.md` (or the relevant deep-dive doc) with
+   architecture changes.
 4. Update `CHANGELOG.md` under an `[Unreleased]` section.
+5. If you added a new shipped `.MNX` user program, also update
+   `tests/test_mnx_size_budgets.py`, `.github/workflows/build.yml`
+   (verification + artifact upload), and `.github/workflows/release.yml`
+   (staging + README.txt) so CI guards and release packages stay in
+   sync.
+6. If you touched `src/programs/basic/`, the asm-lint runs automatically;
+   fix any reported issues or annotate per-label (`;@stack-merge`,
+   `;@no-stack-check`, `;@owner`, `;@returns cf`, `;@noreturn`) as
+   appropriate.
 
 ## Architecture Overview
 

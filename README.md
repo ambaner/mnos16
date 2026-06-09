@@ -1,11 +1,12 @@
 # MNOS16
 
 A minimalistic 16-bit operating system built from scratch in x86 assembly —
-currently at **v0.9.18**.  Features a multi-stage boot loader, a
+currently at **v0.9.19.0**.  Features a multi-stage boot loader, a
 microkernel-style architecture with separate relocatable modules for filesystem
-and memory management, and an interactive shell that can load and run user
-programs.  Targets Hyper-V Gen 1 VMs with a unified VHD containing both Release
-and Debug configurations.
+and memory management, an interactive shell that can load and run user
+programs, and a complete GW-BASIC-style interpreter (BASIC.MNX v2.0).
+Targets Hyper-V Gen 1 VMs with a unified VHD containing both Release and Debug
+configurations.
 
 ![MNOS16 booting in Hyper-V](doc/booted.gif)
 
@@ -91,7 +92,7 @@ VHD — no need to rebuild or swap images.
 After the boot chain completes, you'll see the shell:
 
 ```
-  MNOS v0.9.18 [Release]
+  MNOS v0.9.19.0 [Release]
 
 mnos:\>
 ```
@@ -119,7 +120,7 @@ Bundled user programs:
 | Program        | Description |
 |----------------|-------------|
 | `EDIT.MNX`     | Full-screen text editor (gap buffer, find/replace, atomic save) |
-| `BASIC.MNX`    | Line-numbered BASIC interpreter (PRINT/INPUT/FOR/GOSUB/LOAD/SAVE/FILES) |
+| `BASIC.MNX`    | Line-numbered BASIC v2.0 — strings, arrays, file I/O, DATA/READ, DEF FN, WHILE/WEND, LOAD/SAVE/LIST/RUN |
 | `MNMON.MNX`    | Machine monitor (db/dw/eb/ew/x/g, DOS-DEBUG-style) |
 | `SYSINFO.MNX`  | System info — kernel/shell/memory/disk diagnostics |
 
@@ -206,17 +207,23 @@ mini-os/
 │   │   │   ├── edit_exit.inc  #   Exit handler
 │   │   │   ├── edit_msg.inc   #   Status messages
 │   │   │   └── edit_data.inc  #   State variables, strings, help text
-│   │   ├── basic/             # BASIC.MNX — line-numbered BASIC interpreter
-│   │   │   ├── basic.asm      #   Entry point, REPL loop, MNEX header
+│   │   ├── basic/             # BASIC.MNX — line-numbered BASIC interpreter (v2.0)
+│   │   │   ├── basic.asm      #   Entry point, REPL loop, MNEX header, %include order
 │   │   │   ├── basic_data.inc #   Fixed-address layout, error codes, constants
+│   │   │   ├── basic_macros.inc   # BAS_RET_OK / BAS_RET_ERR / BAS_DISPATCH_BEGIN/END (v0.9.19.0)
 │   │   │   ├── basic_tokens.inc   # Keyword/function/operator token IDs
 │   │   │   ├── basic_lex.inc  #   Tokenizer + detokenizer
 │   │   │   ├── basic_err.inc  #   Central error trampoline (ERR/ERL)
 │   │   │   ├── basic_edit.inc #   Readline + program-line list ops
-│   │   │   ├── basic_load.inc #   LOAD / SAVE / FILES helpers
-│   │   │   ├── basic_var.inc  #   Variable storage (A-Z, A$-Z$, arrays)
-│   │   │   ├── basic_expr.inc #   Pratt-style expression evaluator
-│   │   │   └── basic_stmt.inc #   Statement dispatcher + handler set
+│   │   │   ├── basic_load.inc #   LOAD / SAVE / FILES helpers (atomic FS_REPLACE_FILE)
+│   │   │   ├── basic_var.inc  #   Variable table (numeric, string, array headers)
+│   │   │   ├── basic_str.inc  #   String heap, descriptors, concat, compare, slicing
+│   │   │   ├── basic_array.inc    # DIM + 1-D numeric/string arrays in HMA
+│   │   │   ├── basic_io.inc   #   File channels (OPEN/CLOSE/PRINT#/INPUT#/EOF)
+│   │   │   ├── basic_dataread.inc # DATA / READ / RESTORE
+│   │   │   ├── basic_defn.inc #   DEF FN (1-arg numeric user functions)
+│   │   │   ├── basic_expr.inc #   Pratt-style typed expression evaluator
+│   │   │   └── basic_stmt.inc #   Statement dispatcher + handler set + heap-diag dump
 │   │   ├── sysinfo/           # SYSINFO.MNX — system information (5 pages)
 │   │   │   ├── sysinfo.asm    #   Entry point, MNEX header (6 sectors)
 │   │   │   ├── sysinfo_code.inc   # Display logic (CPU, memory, BDA, disk, IVT)
@@ -235,6 +242,7 @@ mini-os/
 │       └── shell_data.inc         # String constants + runtime data buffers
 ├── tools/
 │   ├── build.ps1              # Build logic — assembles all binaries, creates VHD
+│   ├── asm_lint.py            # Static checks on src/programs/basic (stack/scratch/CF)
 │   ├── gen_relocs.py          # Relocation table generator (delta comparison)
 │   ├── pack_module.py         # Module packager (pre-biasing + v2 header)
 │   ├── create-disk.ps1        # Partitioned raw disk image creator
@@ -243,22 +251,24 @@ mini-os/
 │   ├── setup-vm.ps1           # Hyper-V VM create/update logic
 │   ├── read-serial.ps1        # Read COM1 debug output from running VM
 │   └── nasm/                  # Auto-downloaded NASM (gitignored)
+├── data/                      # Data files bundled into the MNFS image
+│   └── TESTBAS.BAS            # Sample BASIC program (runs from `basic TESTBAS`)
 ├── build/                     # Build output (gitignored)
 │   └── boot/
 │       ├── mbr.bin            # MBR binary
 │       ├── vbr.bin            # VBR binary (2 sectors)
 │       ├── loader.sys         # LOADER (3 sectors, shared)
-│       ├── fs.sys             # FS — release, relocatable (5 sectors)
+│       ├── fs.sys             # FS — release, relocatable (6 sectors)
 │       ├── kernel.sys         # KERNEL — release (8 sectors)
-│       ├── shell.sys          # SHELL — release, relocatable (13 sectors)
+│       ├── shell.sys          # SHELL — release, relocatable (15 sectors)
 │       ├── mm.sys             # MM — release, relocatable (2 sectors)
-│       ├── edit.mnx            # EDIT — text editor (13 sectors)
-│       ├── basic.mnx           # BASIC — interpreter (~20 sectors)
-│       ├── sysinfo.mnx        # SYSINFO — system info (6 sectors)
-│       ├── mnmon.mnx          # MNMON — machine monitor (5 sectors)
-│       ├── fsd.sys            # FS — debug (8 sectors)
+│       ├── edit.mnx            # EDIT — text editor (15 sectors)
+│       ├── basic.mnx           # BASIC — interpreter v2.0 (35 sectors)
+│       ├── sysinfo.mnx        # SYSINFO — system info (7 sectors)
+│       ├── mnmon.mnx          # MNMON — machine monitor (6 sectors)
+│       ├── fsd.sys            # FS — debug (9 sectors)
 │       ├── kerneld.sys        # KERNEL — debug (14 sectors)
-│       ├── shelld.sys         # SHELL — debug (13 sectors)
+│       ├── shelld.sys         # SHELL — debug (15 sectors)
 │       ├── mmd.sys            # MM — debug (3 sectors)
 │       ├── MNOS16.img         # 16 MB raw disk image
 │       └── MNOS16.vhd        # Bootable VHD (single unified image)
@@ -330,14 +340,21 @@ python -m pytest tests/ -v
 python -m pytest tests/ -v    # coverage is auto-generated on session finish
 ```
 
-**275 tests** across 19 modules — **Tier 1 (Unicorn-based unit tests):**
+**338 tests** across many modules. **Tier 1 (Unicorn-based unit tests):**
 `shell_parse_args` (15), `run_parse_filename` (9), `strcmp` (11),
 `mm_allocator` (29), `fs_write` (26), `cmdmatch` (12), `editor` (58),
 `memory_layout` (16), `relocation` (39), `exec` (17), `spawn_state`.
-**Tier 0 (Structural / static — added in v0.9.18):** `no_raw_bios_in_userland` (2),
-`migrated_programs_use_wrappers` (3), `mnoslib_wrapper_shape` (2),
-`mnoslib_syscall_coverage` (3), `mnoslib_include_order` (2),
-`mnx_size_budgets` (9). Tests run automatically in CI via GitHub Actions.
+**Tier 0 (Structural / static — added in v0.9.18 and v0.9.19):**
+`no_raw_bios_in_userland` (2), `migrated_programs_use_wrappers` (3),
+`mnoslib_wrapper_shape` (2), `mnoslib_syscall_coverage` (3),
+`mnoslib_include_order` (2), `mnx_size_budgets` (9), `asm_lint`
+(stack-balance + scratch-slot + CF discipline on `src/programs/basic`),
+`basic_strings`, `basic_arrays`, `basic_fileio`, `basic_data_read`,
+`basic_def_fn`, `basic_load_buf_headroom`, `basic_runtime_regressions`
+(guards for the v0.9.19.0 six-bug runtime correctness pass),
+`basic_hma_concat_regressions` (HMA-budget guards for the
+`bas_str_concat` stack-frame fix). Tests run automatically in CI via
+GitHub Actions.
 See **[doc/TESTING.md](doc/TESTING.md)** for the full 4-tier strategy.
 
 **Coverage metrics:**
@@ -400,11 +417,14 @@ Additional deep-dive documents:
   modular .inc architecture, modal dialog system, Find/Replace engine, memory
   layout, color scheme, key dispatch, and file I/O integration.
 
-- **[doc/BASIC.md](doc/BASIC.md)** — BASIC.MNX interpreter reference: the line-numbered
-  GW-BASIC-style language (PRINT, INPUT, IF/THEN, FOR/NEXT, GOTO, GOSUB,
-  LOAD/SAVE/RUN/LIST), 16-bit integer + string variables A–Z / A$–Z$, arrays,
-  the central error trampoline with ERR/ERL, REPL vs. script modes, and the
-  modular `basic_*.inc` source layout.
+- **[doc/BASIC.md](doc/BASIC.md)** — BASIC.MNX interpreter reference (v2.0): the
+  line-numbered GW-BASIC-style language — `PRINT` / `INPUT` / `IF/THEN/ELSE` /
+  `FOR/NEXT` / `WHILE/WEND` / `GOTO` / `GOSUB` / `ON…GOTO`, 16-bit integer + string
+  variables (`A`–`Z`, `A$`–`Z$`, with digit suffixes), 1-D arrays via `DIM`, file
+  I/O channels (`OPEN`/`CLOSE`/`PRINT #`/`INPUT #`/`EOF`), `DATA`/`READ`/`RESTORE`,
+  user-defined functions (`DEF FN`), `LOAD`/`SAVE`/`RUN`/`LIST`, the central
+  error trampoline with `ERR`/`ERL`, REPL vs. script modes, and the modular
+  `basic_*.inc` source layout.
 
 - **[doc/MNOSLIB.md](doc/MNOSLIB.md)** — User-mode helper library: the ~50 named
   `mn_*` wrappers around INT 0x80 / 0x81 / 0x82 syscalls, split across four
@@ -459,6 +479,7 @@ Each version is a tagged release you can checkout to see the project at that sta
 | `v0.9.16` | **Nested spawn fixes** | Fixed `#UD` crash on multi-level SYS_SPAWN; nested spawns reuse outermost trampoline; spawn rollback on pre-load failure; trampoline re-install after nested unwind |
 | `v0.9.17` | **BASIC + FS API hardening** | BASIC.MNX interactive interpreter (PRINT/INPUT/FOR/GOSUB/LOAD/SAVE/FILES); new FS_REPLACE_FILE atomic syscall (AH=0x09); mnoslib.inc user-mode helpers (mn_save_file, mn_load_file); FS ABI contract v1 (full 32-bit register preservation); EDIT + BASIC migrated to atomic save; doc/BASIC.md; 254 total tests |
 | `v0.9.18` | **Full mnoslib coverage** | Split `mnoslib.inc` into io/sys/fs/mm headers under an umbrella; ~50 wrappers covering every INT 0x80/0x81/0x82 syscall; EDIT, BASIC, and core SHELL refactored to `call mn_*` helpers; new `doc/MNOSLIB.md` catalog; raw `int 0xNN` still works (wrappers are additive) |
+| `v0.9.19.0` | **BASIC 2.0 + runtime hardening** | Strings as a first-class type (`A$`–`Z$`/`A0$`–`Z9$`, concatenation, comparison, `LEN`/`ASC`/`VAL`/`CHR$`/`STR$`/`LEFT$`/`RIGHT$`/`MID$`/`INKEY$`/`INPUT$`); `DIM` + 1-D numeric/string arrays; file I/O channels (`OPEN`/`CLOSE`/`PRINT #`/`INPUT #`/`EOF`, four channels, 4 KB HMA buffers, atomic flush via `FS_REPLACE_FILE`); `DATA`/`READ`/`RESTORE` with `TOK_DATA_RAW`; `DEF FN` user functions; `WHILE`/`WEND` now executable; full `doc/BASIC.md` v2.0. Includes the post-merge runtime correctness pass (6 flag/scratch/pop bugs), the HMA-corruption fix in `bas_str_concat` (stack-frame off-by-one), the `tools/asm_lint.py` static checker (stack-balance, scratch-slot ownership, CF discipline) and the `BAS_RET_OK` / `BAS_DISPATCH_*` convention macros, plus permanent KERNELD-gated heap-diag dumps in `basic.mnx`. 338 total tests; `basic.mnx` 35/35 sectors. |
 
 ```cmd
 git checkout v0.1.0      # see the project at any prior milestone

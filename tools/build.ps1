@@ -209,6 +209,16 @@ Write-Step "Using NASM: $nasm"
 $python = (Get-Command python -ErrorAction SilentlyContinue).Source
 if (-not $python) { throw "Python not found on PATH — required for relocatable module builds." }
 
+# ---------- asm_lint (static checks on BASIC asm) ---------------------------
+$AsmLint = Join-Path $ToolsDir 'asm_lint.py'
+if (Test-Path $AsmLint) {
+    Write-Step 'Running asm_lint on src/programs/basic ...'
+    & $python $AsmLint
+    if ($LASTEXITCODE -ne 0) {
+        throw "asm_lint failed — fix violations above before continuing."
+    }
+}
+
 # ---------- assemble shared binaries ----------------------------------------
 Build-Binary -Name 'MBR'    -AsmPath $MbrAsm    -BinPath $MbrBin    -ExpectedSize 512
 Build-Binary -Name 'VBR'    -AsmPath $VbrAsm    -BinPath $VbrBin

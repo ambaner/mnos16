@@ -62,7 +62,11 @@ TOK_SAVE         equ 0xA5
 TOK_FILES        equ 0xA6
 TOK_CLEAR        equ 0xA7
 TOK_HELP         equ 0xA8
-TOK_LAST_STMT    equ 0xA8
+TOK_DATA         equ 0xA9
+TOK_READ         equ 0xAA
+TOK_RESTORE      equ 0xAB
+TOK_FN           equ 0xAC
+TOK_LAST_STMT    equ 0xAC
 
 ; --- Functions (0xC0..0xDF) -------------------------------------------------
 TOK_FN_FIRST     equ 0xC0
@@ -99,6 +103,7 @@ TOK_INT_LIT      equ 0xF0
 TOK_LINEREF      equ 0xF1
 TOK_STR_LIT      equ 0xF2
 TOK_VAR_NAME     equ 0xF3
+TOK_DATA_RAW     equ 0xF4           ; DATA payload: 1-byte len + raw bytes
 
 ; =============================================================================
 ; KEYWORD TABLE
@@ -126,6 +131,7 @@ TOK_VAR_NAME     equ 0xF3
 bas_keyword_table:
     ; --- Longest first (alphabetised within length band) --------------------
     KW 'RANDOMIZE', TOK_RANDOMIZE
+    KW 'RESTORE',   TOK_RESTORE
     KW 'INKEY$',    TOK_INKEYS
     KW 'INPUT$',    TOK_INPUTS
     KW 'LEFT$',     TOK_LEFTS
@@ -142,6 +148,9 @@ bas_keyword_table:
     KW 'CHR$',      TOK_CHRS
     KW 'MID$',      TOK_MIDS
     KW 'STR$',      TOK_STRS
+    KW 'DATA',      TOK_DATA
+    KW 'READ',      TOK_READ
+    KW 'FN',        TOK_FN
     KW 'LIST',      TOK_LIST
     KW 'LOAD',      TOK_LOAD
     KW 'SAVE',      TOK_SAVE
@@ -209,8 +218,9 @@ bas_det_table:
     dw bas_kw_CLOSE, bas_kw_AS, bas_kw_OUTPUT, bas_kw_APPEND     ; 9C..9F
     dw bas_kw_SYSTEM, bas_kw_LIST, bas_kw_RUN, bas_kw_NEW        ; A0..A3
     dw bas_kw_LOAD, bas_kw_SAVE, bas_kw_FILES, bas_kw_CLEAR      ; A4..A7
-    dw bas_kw_HELP                                               ; A8
-    times (0xC0 - 0xA9) dw 0                                     ; A9..BF gap
+    dw bas_kw_HELP, bas_kw_DATA, bas_kw_READ, bas_kw_RESTORE     ; A8..AB
+    dw bas_kw_FN                                                 ; AC
+    times (0xC0 - 0xAD) dw 0                                     ; AD..BF gap
 
     ; 0xC0..0xDF functions
     dw bas_kw_LEFTS, bas_kw_RIGHTS, bas_kw_MIDS, bas_kw_LEN      ; C0..C3
@@ -267,6 +277,10 @@ bas_kw_SAVE:      db 'SAVE',0
 bas_kw_FILES:     db 'FILES',0
 bas_kw_CLEAR:     db 'CLEAR',0
 bas_kw_HELP:      db 'HELP',0
+bas_kw_DATA:      db 'DATA',0
+bas_kw_READ:      db 'READ',0
+bas_kw_RESTORE:   db 'RESTORE',0
+bas_kw_FN:        db 'FN',0
 
 bas_kw_LEFTS:     db 'LEFT$',0
 bas_kw_RIGHTS:    db 'RIGHT$',0
